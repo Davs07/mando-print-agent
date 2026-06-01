@@ -2,7 +2,7 @@
   "name": "mando-print-agent",
   "version": "1.0.0",
   "description": "Agente local de impresión para Mando Platform — conecta la nube con impresoras térmicas físicas",
-  "main": "dist/index.js",
+  "main": "out/main/index.js",
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
@@ -10,18 +10,31 @@
     "dev:once": "ts-node --transpile-only src/index.ts",
     "lint": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "electron:dev": "electron-vite dev",
+    "electron:build": "electron-vite build",
+    "dist": "npm run electron:build && electron-builder"
   },
   "dependencies": {
     "@point-of-sale/receipt-printer-encoder": "^3.0.0",
     "dotenv": "^16.4.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "socket.io-client": "^4.8.1"
   },
   "optionalDependencies": {
     "serialport": "^12.0.0"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
     "@types/node": "^20.14.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "electron": "^42.3.0",
+    "electron-builder": "^26.8.1",
+    "electron-vite": "^5.0.0",
+    "tailwindcss": "^4.0.0",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.4.5",

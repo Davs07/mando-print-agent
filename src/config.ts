@@ -2,15 +2,21 @@ import * as dotenv from 'dotenv'
 import * as path from 'path'
 import * as fs from 'fs'
 
-// Cargar .env desde el directorio de trabajo o el directorio del binario
-const envPaths = [
-  path.join(process.cwd(), '.env'),
-  path.join(__dirname, '..', '.env'),
-]
-for (const envPath of envPaths) {
-  if (fs.existsSync(envPath)) {
-    dotenv.config({ path: envPath })
-    break
+function loadDotenv(customPath?: string): void {
+  if (customPath) {
+    dotenv.config({ path: customPath, override: true })
+    return
+  }
+  // Auto-discover .env desde el directorio de trabajo o el directorio del binario
+  const searchPaths = [
+    path.join(process.cwd(), '.env'),
+    path.join(__dirname, '..', '.env'),
+  ]
+  for (const p of searchPaths) {
+    if (fs.existsSync(p)) {
+      dotenv.config({ path: p })
+      break
+    }
   }
 }
 
@@ -53,7 +59,9 @@ function parseIntEnv(key: string, defaultValue: number): number {
   return parsed
 }
 
-export function loadConfig(): PrintAgentConfig {
+export function loadConfig(envPath?: string): PrintAgentConfig {
+  loadDotenv(envPath)
+
   const printerType = (process.env.PRINTER_TYPE ?? 'network') as PrinterType
   if (!['network', 'serial', 'file'].includes(printerType)) {
     throw new Error(`PRINTER_TYPE inválido: "${printerType}". Opciones: network | serial | file`)

@@ -1,3 +1,4 @@
+import { EventEmitter } from 'events'
 import { io, Socket } from 'socket.io-client'
 import { encodeReceiptTicket, encodeKitchenTicket } from './escpos'
 import type { PrintAgentConfig, LogLevel } from './config'
@@ -48,7 +49,7 @@ interface PrintJobResultPayload {
 
 // ─── Implementación del agente ────────────────────────────────────────────────
 
-export class PrintAgent {
+export class PrintAgent extends EventEmitter {
   private socket: Socket | null = null
   private heartbeatTimer: NodeJS.Timeout | null = null
   private readonly logLevelIndex: number
@@ -59,12 +60,14 @@ export class PrintAgent {
     private readonly config: PrintAgentConfig,
     private readonly printer: Printer,
   ) {
+    super()
     this.logLevelIndex = PrintAgent.LOG_LEVELS.indexOf(config.logLevel)
   }
 
   connect(): void {
     const url = this.config.backendUrl
     this.log('info', `Conectando a ${url}/print-agent ...`)
+    this.emit('status', { status: 'connecting', message: `Conectando a ${url}` })
 
     this.socket = io(`${url}/print-agent`, {
       query: { token: this.config.token },
@@ -77,20 +80,24 @@ export class PrintAgent {
 
     this.socket.on('connect', () => {
       this.log('info', `Conectado. Socket ID: ${this.socket!.id}`)
+      this.emit('status', { status: 'connected', message: `Socket ID: ${this.socket!.id}` })
       this.startHeartbeat()
     })
 
     this.socket.on('disconnect', (reason) => {
       this.log('warn', `Desconectado: ${reason}`)
+      this.emit('status', { status: 'disconnected', message: reason })
       this.stopHeartbeat()
     })
 
     this.socket.on('connect_error', (err) => {
       this.log('error', `Error de conexión: ${err.message}`)
+      this.emit('status', { status: 'error', message: err.message })
     })
 
     this.socket.on('reconnect_attempt', (attempt) => {
       this.log('info', `Reconectando (intento ${attempt})...`)
+      this.emit('status', { status: 'connecting', message: `Reconectando (intento ${attempt})` })
     })
 
     this.socket.on('print:job', (payload: PrintJobPayload) => {
@@ -134,6 +141,7 @@ export class PrintAgent {
       'info',
       `Job recibido: ${jobId} | tipo: ${ticketType} | papel: ${paperWidth}`,
     )
+    this.emit('job', { jobId, orderId, ticketType, timestamp: payload.timestamp })
 
     let success = false
     let error: string | undefined
@@ -162,6 +170,7 @@ export class PrintAgent {
       ...(error ? { error } : {}),
     }
 
+    this.emit('result', { jobId, success, ...(error ? { error } : {}) })
     this.socket?.emit('print:result', result)
   }
 
