@@ -2,7 +2,7 @@
   "name": "mando-print-agent",
   "version": "1.0.0",
   "description": "Agente local de impresión para Mando Platform — conecta la nube con impresoras térmicas físicas",
-  "main": "out/main/index.js",
+  "main": "out/main/index.mjs",
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
@@ -13,7 +13,7 @@
     "test:watch": "vitest",
     "electron:dev": "electron-vite dev",
     "electron:build": "electron-vite build",
-    "dist": "npm run electron:build && electron-builder"
+    "dist": "npm run electron:build && electron-builder -c electron-builder.config.ts"
   },
   "dependencies": {
     "@point-of-sale/receipt-printer-encoder": "^3.0.0",

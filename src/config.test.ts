@@ -62,13 +62,16 @@ describe('loadConfig', () => {
     expect(() => loadConfig()).toThrow('MANDO_AGENT_TOKEN')
   })
 
-  it('lanza error si MANDO_BACKEND_URL no está definido', async () => {
+  it('usa backend por defecto si MANDO_BACKEND_URL no está definido', async () => {
     setEnv({
       MANDO_AGENT_TOKEN: 'mpag_abc123',
       MANDO_BACKEND_URL: undefined,
+      PRINTER_TYPE: 'network',
+      PRINTER_HOST: '192.168.1.10',
     })
     const { loadConfig } = (await vi.importActual('../src/config')) as typeof import('../src/config')
-    expect(() => loadConfig()).toThrow('MANDO_BACKEND_URL')
+    const cfg = loadConfig()
+    expect(cfg.backendUrl).toBe('https://mandobusiness-backend-nest.onrender.com')
   })
 
   it('usa valores por defecto cuando las opcionales no están definidas', async () => {

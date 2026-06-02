@@ -2,6 +2,8 @@ import * as dotenv from 'dotenv'
 import * as path from 'path'
 import * as fs from 'fs'
 
+const DEFAULT_BACKEND_URL = 'https://mandobusiness-backend-nest.onrender.com'
+
 function loadDotenv(customPath?: string): void {
   if (customPath) {
     dotenv.config({ path: customPath, override: true })
@@ -79,7 +81,7 @@ export function loadConfig(envPath?: string): PrintAgentConfig {
 
   return {
     token: requireEnv('MANDO_AGENT_TOKEN'),
-    backendUrl: requireEnv('MANDO_BACKEND_URL').replace(/\/$/, ''),
+    backendUrl: (process.env.MANDO_BACKEND_URL ?? DEFAULT_BACKEND_URL).replace(/\/$/, ''),
     printerType,
     printerHost: process.env.PRINTER_HOST,
     printerPort: parseIntEnv('PRINTER_PORT', 9100),
