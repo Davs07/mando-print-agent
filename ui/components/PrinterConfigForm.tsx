@@ -46,7 +46,21 @@ export default function PrinterConfigForm({ initial, onSave }: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="p-4 flex flex-col gap-4">
-      <h2 className="text-sm font-semibold uppercase tracking-widest text-gray-500">Configuración</h2>
+      <div className="space-y-1">
+        <h2 className="text-sm font-semibold uppercase tracking-widest text-gray-500">Configuración</h2>
+        <p className="text-xs text-gray-500">
+          Pega tu token del panel de Mando, configura la impresora local y guarda para reiniciar el agente.
+        </p>
+      </div>
+
+      <div className="rounded-xl border border-gray-800 bg-gray-900/70 p-3 text-xs text-gray-300 space-y-2">
+        <p className="font-semibold text-gray-100">Inicio rápido</p>
+        <ol className="list-decimal list-inside space-y-1 text-gray-400">
+          <li>Crea el agente en Mando y copia el token `mpa_...`.</li>
+          <li>Configura el backend y el tipo de impresora de esta PC.</li>
+          <li>Guarda los cambios. La app reinicia el agente automáticamente.</li>
+        </ol>
+      </div>
 
       {/* Token */}
       <label className="flex flex-col gap-1">
@@ -68,7 +82,7 @@ export default function PrinterConfigForm({ initial, onSave }: Props) {
           type="url"
           value={form['MANDO_BACKEND_URL']}
           onChange={(e) => set('MANDO_BACKEND_URL', e.target.value)}
-          placeholder="https://tu-backend.herokuapp.com"
+          placeholder="https://mandobusiness-backend-nest.onrender.com"
           required
           className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-indigo-500"
         />

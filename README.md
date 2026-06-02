@@ -17,6 +17,19 @@ El agente:
 
 ## Instalación
 
+### Opción recomendada: app de escritorio
+
+Descarga el instalador desde GitHub Releases:
+
+- Windows: `mando-print-agent-windows-x64-setup.exe`
+- macOS Intel: `mando-print-agent-macos-x64.dmg`
+- macOS Apple Silicon: `mando-print-agent-macos-arm64.dmg`
+- Linux: `mando-print-agent-linux-x64.AppImage`
+
+Abre la app, pega tu token `mpa_...`, configura la impresora y guarda. La app reinicia el agente automáticamente.
+
+### Opción manual: repo y scripts
+
 ```bash
 npm install
 cp .env.example .env
@@ -24,7 +37,12 @@ cp .env.example .env
 npm run dev
 ```
 
-Para producción:
+También puedes usar:
+
+- `start.bat` en Windows
+- `start.sh` en macOS/Linux
+
+Para producción manual:
 ```bash
 npm run build
 npm start
@@ -83,6 +101,7 @@ npm run dev      # ts-node-dev con recarga automática
 npm test         # Tests unitarios con Vitest
 npm run lint     # Verificación de tipos TypeScript
 npm run build    # Compilar a dist/
+npm run dist     # Generar instaladores Electron en release/
 ```
 
 ## Generación de token

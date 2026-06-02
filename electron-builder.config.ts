@@ -21,14 +21,17 @@ const config: Configuration = {
   win: {
     target: [{ target: 'nsis', arch: ['x64'] }],
     icon: 'build/icon.ico',
+    artifactName: 'mando-print-agent-windows-x64-setup.${ext}',
   },
   mac: {
     target: [{ target: 'dmg', arch: ['x64', 'arm64'] }],
     icon: 'build/icon.icns',
+    artifactName: 'mando-print-agent-macos-${arch}.${ext}',
   },
   linux: {
     target: [{ target: 'AppImage', arch: ['x64'] }],
     icon: 'build/icon.png',
+    artifactName: 'mando-print-agent-linux-x64.${ext}',
   },
   nsis: {
     oneClick: false,
