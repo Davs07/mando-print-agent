@@ -21,11 +21,13 @@ export interface JobResultEvent {
 export interface ConfigData {
   MANDO_AGENT_TOKEN: string
   MANDO_BACKEND_URL: string
-  PRINTER_TYPE: 'network' | 'serial' | 'file'
+  PRINTER_TYPE: 'network' | 'serial' | 'windows' | 'file'
   PRINTER_HOST?: string
   PRINTER_PORT?: string
   SERIAL_PATH?: string
   SERIAL_BAUD_RATE?: string
+  /** Nombre exacto de la impresora instalada en Windows. */
+  PRINTER_NAME?: string
   PRINTER_FILE_PATH?: string
   HEARTBEAT_INTERVAL_MS?: string
   PAPER_WIDTH?: '58mm' | '80mm'

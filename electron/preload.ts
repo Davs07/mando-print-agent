@@ -29,6 +29,9 @@ contextBridge.exposeInMainWorld('api', {
   restartAgent: (): Promise<void> =>
     ipcRenderer.invoke('agent:restart'),
 
+  listPrinters: (): Promise<string[]> =>
+    ipcRenderer.invoke('printers:list'),
+
   openEnvFile: (): Promise<void> =>
     ipcRenderer.invoke('app:open-env'),
 })

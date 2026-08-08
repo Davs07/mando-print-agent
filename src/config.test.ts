@@ -5,6 +5,23 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
+/**
+ * Ruta inexistente que se pasa a `loadConfig` en todos los tests.
+ *
+ * ⚠️ NO se puede llamar a `loadConfig()` sin argumento aquí. Sin ruta, la
+ * función autodescubre un `.env` en el directorio de trabajo — y en cuanto un
+ * desarrollador configura su agente de verdad, ese archivo existe y le inyecta
+ * un token real a los tests. El de "lanza error si MANDO_AGENT_TOKEN no está
+ * definido" pasaba a fallar, y el del backend por defecto solo seguía en verde
+ * por casualidad, porque `.env.example` trae exactamente la misma URL que el
+ * valor por defecto.
+ *
+ * O sea: la suite se ponía roja justo para quien más la iba a ejecutar. Con una
+ * ruta que no existe, dotenv no carga nada y el test depende solo de lo que él
+ * mismo pone en `process.env`.
+ */
+const SIN_ARCHIVO_ENV = '/mando/no-existe/.env'
+
 // Guardar y restaurar env entre tests
 const originalEnv = { ...process.env }
 
@@ -59,7 +76,7 @@ describe('loadConfig', () => {
       MANDO_AGENT_TOKEN: undefined,
     })
     const { loadConfig } = (await vi.importActual('../src/config')) as typeof import('../src/config')
-    expect(() => loadConfig()).toThrow('MANDO_AGENT_TOKEN')
+    expect(() => loadConfig(SIN_ARCHIVO_ENV)).toThrow('MANDO_AGENT_TOKEN')
   })
 
   it('usa backend por defecto si MANDO_BACKEND_URL no está definido', async () => {
@@ -70,8 +87,8 @@ describe('loadConfig', () => {
       PRINTER_HOST: '192.168.1.10',
     })
     const { loadConfig } = (await vi.importActual('../src/config')) as typeof import('../src/config')
-    const cfg = loadConfig()
-    expect(cfg.backendUrl).toBe('https://mandobusiness-backend-nest.onrender.com')
+    const cfg = loadConfig(SIN_ARCHIVO_ENV)
+    expect(cfg.backendUrl).toBe('https://api.mando.uno')
   })
 
   it('usa valores por defecto cuando las opcionales no están definidas', async () => {
@@ -82,7 +99,7 @@ describe('loadConfig', () => {
       PRINTER_HOST: '192.168.1.10',
     })
     const { loadConfig } = await import('../src/config')
-    const cfg = loadConfig()
+    const cfg = loadConfig(SIN_ARCHIVO_ENV)
 
     expect(cfg.printerPort).toBe(9100)
     expect(cfg.serialBaudRate).toBe(9600)
@@ -97,7 +114,7 @@ describe('loadConfig', () => {
       MANDO_BACKEND_URL: 'http://localhost:3001/',
     })
     const { loadConfig } = await import('../src/config')
-    const cfg = loadConfig()
+    const cfg = loadConfig(SIN_ARCHIVO_ENV)
     expect(cfg.backendUrl).toBe('http://localhost:3001')
   })
 
@@ -108,7 +125,7 @@ describe('loadConfig', () => {
       PRINTER_TYPE: 'bluetooth',
     })
     const { loadConfig } = await import('../src/config')
-    expect(() => loadConfig()).toThrow('PRINTER_TYPE inválido')
+    expect(() => loadConfig(SIN_ARCHIVO_ENV)).toThrow('PRINTER_TYPE inválido')
   })
 
   it('lanza error con PAPER_WIDTH inválido', async () => {
@@ -118,6 +135,6 @@ describe('loadConfig', () => {
       PAPER_WIDTH: '100mm',
     })
     const { loadConfig } = await import('../src/config')
-    expect(() => loadConfig()).toThrow('PAPER_WIDTH inválido')
+    expect(() => loadConfig(SIN_ARCHIVO_ENV)).toThrow('PAPER_WIDTH inválido')
   })
 })

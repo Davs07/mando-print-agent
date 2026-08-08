@@ -1,25 +1,26 @@
 {
   "name": "mando-print-agent",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Agente local de impresión para Mando Platform — conecta la nube con impresoras térmicas físicas",
-  "main": "out/main/index.mjs",
+  "main": "out/main/index.js",
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "dev:once": "ts-node --transpile-only src/index.ts",
-    "lint": "tsc --noEmit",
+    "lint": "tsc --noEmit -p tsconfig.electron.json",
     "test": "vitest run",
     "test:watch": "vitest",
+    "probar:impresora": "ts-node --transpile-only scripts/probar-impresora.ts",
     "electron:dev": "electron-vite dev",
     "electron:build": "electron-vite build",
-    "dist": "npm run electron:build && electron-builder -c electron-builder.config.ts"
+    "dist": "npm run electron:build && electron-builder -c electron-builder.config.ts --publish never",
+    "dist:publish": "npm run electron:build && electron-builder -c electron-builder.config.ts --publish always"
   },
+  "_comentario_dependencias": "Solo lo que se necesita EN RUNTIME va en dependencies: electron-builder empaqueta estas y descarta devDependencies. React se usa unicamente en el renderer, que Vite bundlea, asi que es dependencia de build y no debe viajar en el instalador.",
   "dependencies": {
     "@point-of-sale/receipt-printer-encoder": "^3.0.0",
     "dotenv": "^16.4.5",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
     "socket.io-client": "^4.8.1"
   },
   "optionalDependencies": {
@@ -30,6 +31,8 @@
     "@types/node": "^20.14.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.1",
     "electron": "^42.3.0",
     "electron-builder": "^26.8.1",

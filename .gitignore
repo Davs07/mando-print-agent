@@ -1,7 +1,17 @@
 node_modules/
 dist/
+out/
 .env
 .env.local
 *.log
 coverage/
 .vscode/
+
+# Salida de electron-builder. Los instaladores se publican en GitHub Releases,
+# NUNCA dentro de un repo: el .exe pesa ~98 MiB contra un limite duro de 100 MiB
+# por archivo en GitHub, y quedaria en el historial para siempre.
+release/
+*.exe
+*.dmg
+*.AppImage
+*.blockmap

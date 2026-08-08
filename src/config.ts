@@ -2,7 +2,16 @@ import * as dotenv from 'dotenv'
 import * as path from 'path'
 import * as fs from 'fs'
 
-const DEFAULT_BACKEND_URL = 'https://mandobusiness-backend-nest.onrender.com'
+/**
+ * Backend de producción.
+ *
+ * ⚠️ Es el valor que usa una instalación nueva si nadie toca `MANDO_BACKEND_URL`,
+ * así que tiene que ser el dominio de producción. Antes apuntaba al host de
+ * Render (`mandobusiness-backend-nest.onrender.com`), que es el entorno viejo:
+ * cada local recién instalado hablaba con el backend equivocado sin que nada
+ * fallara de forma visible — simplemente el token no validaba.
+ */
+const DEFAULT_BACKEND_URL = 'https://api.mando.uno'
 
 function loadDotenv(customPath?: string): void {
   if (customPath) {
@@ -22,9 +31,11 @@ function loadDotenv(customPath?: string): void {
   }
 }
 
-export type PrinterType = 'network' | 'serial' | 'file'
+export type PrinterType = 'network' | 'serial' | 'windows' | 'file'
 export type PaperWidth = '58mm' | '80mm'
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
+
+export const TIPOS_DE_IMPRESORA: PrinterType[] = ['network', 'serial', 'windows', 'file']
 
 export interface PrintAgentConfig {
   token: string
@@ -36,6 +47,8 @@ export interface PrintAgentConfig {
   /** serial */
   serialPath?: string
   serialBaudRate: number
+  /** windows — nombre exacto en «Dispositivos e impresoras» */
+  printerName?: string
   /** file */
   filePath?: string
   heartbeatIntervalMs: number
@@ -65,8 +78,10 @@ export function loadConfig(envPath?: string): PrintAgentConfig {
   loadDotenv(envPath)
 
   const printerType = (process.env.PRINTER_TYPE ?? 'network') as PrinterType
-  if (!['network', 'serial', 'file'].includes(printerType)) {
-    throw new Error(`PRINTER_TYPE inválido: "${printerType}". Opciones: network | serial | file`)
+  if (!TIPOS_DE_IMPRESORA.includes(printerType)) {
+    throw new Error(
+      `PRINTER_TYPE inválido: "${printerType}". Opciones: ${TIPOS_DE_IMPRESORA.join(' | ')}`,
+    )
   }
 
   const paperWidth = (process.env.PAPER_WIDTH ?? '80mm') as PaperWidth
@@ -87,6 +102,7 @@ export function loadConfig(envPath?: string): PrintAgentConfig {
     printerPort: parseIntEnv('PRINTER_PORT', 9100),
     serialPath: process.env.SERIAL_PATH,
     serialBaudRate: parseIntEnv('SERIAL_BAUD_RATE', 9600),
+    printerName: process.env.PRINTER_NAME,
     filePath: process.env.PRINTER_FILE_PATH,
     heartbeatIntervalMs: parseIntEnv('HEARTBEAT_INTERVAL_MS', 25000),
     paperWidth,
