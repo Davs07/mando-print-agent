@@ -17,6 +17,7 @@ import * as dotenv from 'dotenv'
  */
 import { loadConfig } from '../src/config'
 import { createPrinter } from '../src/printer'
+import { encodeTestTicket } from '../src/escpos'
 import { PrintAgent } from '../src/agent'
 import type { AgentStatusEvent, JobEvent, JobResultEvent } from './ipc-types'
 
@@ -219,6 +220,25 @@ ipcMain.handle('config:save', (_e, envVars: Record<string, string>): { ok: boole
 
 ipcMain.handle('agent:restart', async (): Promise<void> => {
   await startAgent()
+})
+
+/**
+ * Imprime un ticket de prueba con la configuracion guardada.
+ *
+ * Recorre el mismo camino que un ticket real (loadConfig -> createPrinter ->
+ * print), asi que si esto sale impreso, las comandas tambien saldran. Antes la
+ * unica forma de verificar era esperar un pedido de verdad, y si estaba mal el
+ * negocio se enteraba con un cliente delante.
+ */
+ipcMain.handle('printer:test', async (): Promise<{ ok: boolean; error?: string }> => {
+  try {
+    const config = loadConfig(getEnvPath())
+    const printer = await createPrinter(config)
+    await printer.print(encodeTestTicket(config.paperWidth ?? '80mm'))
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
 })
 
 ipcMain.handle('app:open-env', (): void => {

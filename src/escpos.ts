@@ -374,3 +374,48 @@ export function encodeKitchenTicket(
 
   return enc.newline().newline().newline().newline().newline().cut().encode()
 }
+
+// ---------------------------------------------------------------------------
+// Ticket de prueba
+// ---------------------------------------------------------------------------
+
+/**
+ * Ticket corto para verificar la configuracion sin esperar un pedido real.
+ *
+ * POR QUE EXISTE: antes la unica forma de saber si la impresora estaba bien
+ * configurada era esperar a que cayera una comanda. Si fallaba, el negocio se
+ * enteraba con un cliente delante. Esto recorre exactamente el mismo camino
+ * que un ticket de verdad —mismo encoder, mismo transporte, mismo corte—, asi
+ * que si sale impreso, los reales tambien saldran.
+ */
+export function encodeTestTicket(paperWidth: PaperWidth = '80mm'): Uint8Array {
+  const columns = paperWidth === '58mm' ? 32 : 48
+  const encoder = new ReceiptPrinterEncoder({ columns })
+
+  return encoder
+    .initialize()
+    .align('center')
+    .bold(true)
+    .size(2)
+    .line('MANDO')
+    .size(1)
+    .bold(false)
+    .newline()
+    .line('Prueba de impresion')
+    .line('-'.repeat(columns))
+    .align('left')
+    .newline()
+    .line('Si lees esto, la impresora quedo')
+    .line('bien configurada.')
+    .newline()
+    .line(`Ancho de papel: ${paperWidth}`)
+    .line(`Fecha: ${new Date().toLocaleString('es-PE')}`)
+    .newline()
+    .align('center')
+    .line('-'.repeat(columns))
+    .line('Ya puedes cerrar esta ventana.')
+    .newline()
+    .newline()
+    .cut()
+    .encode()
+}

@@ -32,6 +32,9 @@ contextBridge.exposeInMainWorld('api', {
   listPrinters: (): Promise<string[]> =>
     ipcRenderer.invoke('printers:list'),
 
+  testPrint: (): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('printer:test'),
+
   openEnvFile: (): Promise<void> =>
     ipcRenderer.invoke('app:open-env'),
 })

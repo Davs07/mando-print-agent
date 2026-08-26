@@ -7,19 +7,22 @@ interface Props {
 
 type DesktopApi = {
   openEnvFile: () => Promise<void>
+  listPrinters: () => Promise<string[]>
+  testPrint: () => Promise<{ ok: boolean; error?: string }>
 }
 
-type PrinterType = 'network' | 'serial' | 'file'
+type PrinterType = 'network' | 'serial' | 'windows' | 'file'
 type PaperWidth = '58mm' | '80mm'
 
 const DEFAULT: Record<string, string> = {
   MANDO_AGENT_TOKEN: '',
-  MANDO_BACKEND_URL: 'https://mandobusiness-backend-nest.onrender.com',
+  MANDO_BACKEND_URL: 'https://api.mando.uno',
   PRINTER_TYPE: 'network',
   PRINTER_HOST: '',
   PRINTER_PORT: '9100',
   SERIAL_PATH: '',
   SERIAL_BAUD_RATE: '9600',
+  PRINTER_NAME: '',
   PRINTER_FILE_PATH: '',
   PAPER_WIDTH: '80mm',
   HEARTBEAT_INTERVAL_MS: '25000',
@@ -29,6 +32,8 @@ const DEFAULT: Record<string, string> = {
 export default function PrinterConfigForm({ initial, onSave }: Props) {
   const [form, setForm] = useState<Record<string, string>>(DEFAULT)
   const [saving, setSaving] = useState(false)
+  const [probando, setProbando] = useState(false)
+  const [resultadoPrueba, setResultadoPrueba] = useState<{ ok: boolean; error?: string } | null>(null)
   const desktopApi = (window as typeof window & { api?: DesktopApi }).api
 
   useEffect(() => {
@@ -36,7 +41,42 @@ export default function PrinterConfigForm({ initial, onSave }: Props) {
   }, [initial])
 
   const set = (key: string, value: string) => setForm((prev) => ({ ...prev, [key]: value }))
-  const printerType = form['PRINTER_TYPE'] === 'serial' ? 'serial' : 'network'
+  /**
+   * Antes esto era `=== 'serial' ? 'serial' : 'network'`, que colapsaba
+   * cualquier otro valor a `network`. Un `.env` con `PRINTER_TYPE=windows` se
+   * mostraba como "Por WiFi o red" y al guardar el formulario lo reescribia,
+   * dejando al usuario sin forma de usar ese modo desde la interfaz.
+   */
+  const printerType: PrinterType = (['network', 'serial', 'windows', 'file'] as const).includes(
+    form['PRINTER_TYPE'] as PrinterType,
+  )
+    ? (form['PRINTER_TYPE'] as PrinterType)
+    : 'network'
+
+  /**
+   * Impresoras instaladas en el sistema. El modo `windows` exige el nombre
+   * EXACTO, y teclearlo mal falla sin dar pista util, asi que se ofrecen en
+   * una lista en vez de pedirlo a mano.
+   */
+  const [impresoras, setImpresoras] = useState<string[]>([])
+  const [cargandoImpresoras, setCargandoImpresoras] = useState(false)
+
+  useEffect(() => {
+    if (printerType !== 'windows' || !desktopApi?.listPrinters) return
+    let vigente = true
+    setCargandoImpresoras(true)
+    void desktopApi
+      .listPrinters()
+      .then((lista) => {
+        if (vigente) setImpresoras(lista)
+      })
+      .finally(() => {
+        if (vigente) setCargandoImpresoras(false)
+      })
+    return () => {
+      vigente = false
+    }
+  }, [printerType, desktopApi])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -86,8 +126,16 @@ export default function PrinterConfigForm({ initial, onSave }: Props) {
           className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-indigo-500"
         >
           <option value="network">Por WiFi o red</option>
-          <option value="serial">Por cable USB</option>
+          <option value="windows">Por cable USB (instalada en Windows)</option>
+          <option value="serial">Por cable USB (puerto COM)</option>
         </select>
+        <span className="text-[11px] text-gray-500">
+          {printerType === 'windows'
+            ? 'La mas comun en termicas USB: aparece en «Dispositivos e impresoras».'
+            : printerType === 'serial'
+              ? 'Solo si tu impresora aparece como COM1, COM3... en Administrador de dispositivos.'
+              : 'La impresora tiene cable de red o WiFi y una IP propia.'}
+        </span>
       </label>
 
       {printerType === 'network' && (
@@ -112,6 +160,48 @@ export default function PrinterConfigForm({ initial, onSave }: Props) {
             />
           </label>
         </div>
+      )}
+
+      {printerType === 'windows' && (
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-gray-400">Impresora</span>
+          {impresoras.length > 0 ? (
+            <select
+              value={form['PRINTER_NAME']}
+              onChange={(e) => set('PRINTER_NAME', e.target.value)}
+              className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-indigo-500"
+            >
+              <option value="">Elige una impresora...</option>
+              {/* El nombre guardado puede no estar en la lista si la impresora
+                  esta apagada o desconectada; se conserva para no perderlo. */}
+              {!impresoras.includes(form['PRINTER_NAME']) && form['PRINTER_NAME'] && (
+                <option value={form['PRINTER_NAME']}>
+                  {form['PRINTER_NAME']} (no conectada ahora)
+                </option>
+              )}
+              {impresoras.map((nombre) => (
+                <option key={nombre} value={nombre}>
+                  {nombre}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type="text"
+              value={form['PRINTER_NAME']}
+              onChange={(e) => set('PRINTER_NAME', e.target.value)}
+              placeholder="Nombre exacto, tal como figura en Windows"
+              className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-indigo-500"
+            />
+          )}
+          <span className="text-[11px] text-gray-500">
+            {cargandoImpresoras
+              ? 'Buscando impresoras instaladas...'
+              : impresoras.length > 0
+                ? 'Elegida de la lista del sistema, asi el nombre siempre coincide.'
+                : 'No se encontraron impresoras instaladas. Escribe el nombre exacto.'}
+          </span>
+        </label>
       )}
 
       {printerType === 'serial' && (
@@ -166,6 +256,38 @@ export default function PrinterConfigForm({ initial, onSave }: Props) {
         >
           {saving ? 'Guardando...' : 'Guardar y conectar'}
         </button>
+
+        <button
+          type="button"
+          disabled={probando}
+          onClick={async () => {
+            setProbando(true)
+            setResultadoPrueba(null)
+            try {
+              const r = await desktopApi?.testPrint()
+              setResultadoPrueba(r ?? { ok: false, error: 'No disponible' })
+            } finally {
+              setProbando(false)
+            }
+          }}
+          className="border border-gray-700 hover:border-gray-500 disabled:opacity-50 text-gray-200 rounded px-4 py-2 text-sm font-medium transition-colors"
+        >
+          {probando ? 'Imprimiendo...' : 'Imprimir prueba'}
+        </button>
+
+        {resultadoPrueba && (
+          <p
+            className={`text-xs rounded px-3 py-2 ${
+              resultadoPrueba.ok
+                ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-900'
+                : 'bg-red-950/60 text-red-300 border border-red-900'
+            }`}
+          >
+            {resultadoPrueba.ok
+              ? 'Enviado. Si salio el papel impreso, ya quedo configurada.'
+              : resultadoPrueba.error}
+          </p>
+        )}
         <details className="rounded-lg border border-gray-800 bg-gray-900/40 px-3 py-2 text-xs text-gray-400">
           <summary className="cursor-pointer select-none text-gray-300">Opciones avanzadas</summary>
           <div className="mt-3 space-y-3">
