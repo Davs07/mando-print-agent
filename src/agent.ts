@@ -70,7 +70,21 @@ export class PrintAgent extends EventEmitter {
     this.emit('status', { status: 'connecting', message: `Conectando a ${url}` })
 
     this.socket = io(`${url}/print-agent`, {
-      query: { token: this.config.token },
+      /**
+       * EL TOKEN VA EN `auth`, NO EN `query`.
+       *
+       * El gateway del backend (print-agent.gateway.ts, extractToken) solo mira
+       * `handshake.auth.token` y la cabecera `Authorization: Bearer`. Nunca lee
+       * `handshake.query`, asi que mandarlo ahi hacia que extractToken
+       * devolviera null, el gateway lanzara UnauthorizedException y cortara con
+       * `client.disconnect(true)`.
+       *
+       * El sintoma engañaba: el socket SI conectaba y el servidor lo echaba
+       * medio segundo despues, asi que la app mostraba "Desconectado" en gris
+       * (evento disconnect) en vez de "Error" en rojo (connect_error). Parecia
+       * un problema de red o de firewall, y era de autenticacion.
+       */
+      auth: { token: this.config.token },
       transports: ['websocket'],
       reconnection: true,
       reconnectionDelay: 2000,

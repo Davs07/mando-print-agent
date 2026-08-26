@@ -136,7 +136,8 @@ describe('PrintAgent', () => {
     expect(io).toHaveBeenCalledWith(
       'http://localhost:3001/print-agent',
       expect.objectContaining({
-        query: { token: 'mpag_test' },
+        // En `auth`, no en `query`: es lo unico que el gateway del backend lee.
+        auth: { token: 'mpag_test' },
         transports: ['websocket'],
       }),
     )
@@ -202,5 +203,38 @@ describe('PrintAgent', () => {
     trigger('connect')
     agent.disconnect()
     expect(mockSocket.disconnect).toHaveBeenCalled()
+  })
+})
+
+// ─── Autenticacion del handshake ──────────────────────────────────────────────
+
+describe('handshake con el backend', () => {
+  /**
+   * REGRESION REAL: el token viajaba en `query`, pero el gateway del backend
+   * (print-agent.gateway.ts, extractToken) solo lee `handshake.auth.token` y la
+   * cabecera Authorization. El resultado era que el socket conectaba y el
+   * servidor lo echaba con `client.disconnect(true)`, asi que la app mostraba
+   * "Desconectado" en gris —no "Error"— y parecia un problema de red.
+   */
+  it('manda el token en auth, que es lo unico que el gateway lee', async () => {
+    const { io } = await import('socket.io-client')
+    ;(io as unknown as ReturnType<typeof vi.fn>).mockClear()
+
+    const agent = new PrintAgent(baseConfig, makePrinter())
+    agent.connect()
+
+    const opciones = (io as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1]
+    expect(opciones.auth).toEqual({ token: 'mpag_test' })
+  })
+
+  it('no lo manda en query, donde el backend nunca lo mira', async () => {
+    const { io } = await import('socket.io-client')
+    ;(io as unknown as ReturnType<typeof vi.fn>).mockClear()
+
+    const agent = new PrintAgent(baseConfig, makePrinter())
+    agent.connect()
+
+    const opciones = (io as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1]
+    expect(opciones.query).toBeUndefined()
   })
 })
