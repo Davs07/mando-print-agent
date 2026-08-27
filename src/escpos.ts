@@ -6,6 +6,16 @@
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const ReceiptPrinterEncoder = require('@point-of-sale/receipt-printer-encoder')
 
+import {
+  DEFAULT_KITCHEN_FORMAT,
+  leerFormato,
+  seccionesOrdenadas,
+  type PrintSectionKey,
+} from './print-format'
+
+/** Secciones de la comanda, en el orden por defecto. */
+const KITCHEN_SECTIONS = DEFAULT_KITCHEN_FORMAT.sectionOrder as PrintSectionKey[]
+
 export type PaperWidth = '58mm' | '80mm'
 
 export interface PrintBranding {
@@ -27,6 +37,13 @@ export interface PrintBranding {
   kitchenShowItemNotes: boolean
   kitchenHeaderText: string
   kitchenFooterText: string
+  /**
+   * «Formato avanzado» serializado, tal como lo manda la API. Cadena vacia = el
+   * negocio nunca lo configuro. Opcionales porque un agente viejo puede recibir
+   * un payload sin ellos, y al reves.
+   */
+  receiptFormatConfig?: string
+  kitchenFormatConfig?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -266,6 +283,13 @@ export function encodeKitchenTicket(
   const encoder = new ReceiptPrinterEncoder({ language: 'esc-pos', columns })
   const o = order as any
 
+  // El panel de diseno del negocio. Hasta ahora el agente no lo miraba —de
+  // hecho la API ni se lo mandaba—, asi que quien configuraba el formato e
+  // imprimia por aqui no veia ningun cambio.
+  const fmt = leerFormato(branding.kitchenFormatConfig, DEFAULT_KITCHEN_FORMAT)
+  const uc = (s: string) => (fmt.uppercase ? s.toUpperCase() : s)
+  const eb = (flag?: boolean) => (fmt.extraBold ? true : (flag ?? false))
+
   const createdAt = o.createdAt ? new Date(o.createdAt) : new Date()
   const timeStr = createdAt.toLocaleTimeString('es-PE', {
     hour: '2-digit',
@@ -275,111 +299,146 @@ export function encodeKitchenTicket(
   const rawTableName = (o.table?.name || o.table?.number || '') as string
   const cleanTableName = rawTableName.replace(/^Mesa\s+/i, '')
 
-  let enc = encoder
-    .initialize()
-    .codepage('cp858')
-    .align('center')
-    .bold(true)
-    .width(2)
-    .height(2)
-    .text(escapeText(branding.businessName || 'COMANDA'))
-    .newline()
-    .width(1)
-    .height(1)
-    .bold(true)
-    .text(escapeText(branding.kitchenHeaderText || 'COMANDA'))
-    .newline()
-    .bold(true)
-    .text('Orden')
-    .newline()
-    .text(`#${escapeText(o.code || o.id)}`)
-    .newline()
-    .bold(false)
-    .text(timeStr)
-    .newline()
+  /**
+   * Cada seccion es un emisor independiente.
+   *
+   * OJO: todas fijan su propia alineacion al empezar. Es lo que permite
+   * reordenarlas: si una diera por hecho el `align` que dejo la anterior,
+   * cambiar el orden en el panel descuadraria el ticket en vez de reordenarlo.
+   */
+  const secciones: Record<PrintSectionKey, (e: any) => any> = {
+    // El ticket termico no imprime logo; `kitchenShowLogo` es del ticket HTML.
+    logo: (e) => e,
 
-  if (branding.kitchenShowTableName && o.serviceType === 'EN_MESA' && cleanTableName) {
-    enc = enc.text(`Mesa ${escapeText(cleanTableName)}`).newline()
-  } else if (o.serviceType) {
-    enc = enc.text(escapeText(o.serviceType)).newline()
-  }
+    header: (e) =>
+      e
+        .align('center')
+        .bold(true)
+        .width(2)
+        .height(2)
+        .text(uc(escapeText(branding.businessName || 'COMANDA')))
+        .newline()
+        .width(1)
+        .height(1)
+        .bold(true)
+        .text(uc(escapeText(branding.kitchenHeaderText || 'COMANDA')))
+        .newline()
+        .bold(eb()),
 
-  if (branding.kitchenShowCustomerName && o.customerName) {
-    enc = enc.text(`Cliente: ${escapeText(o.customerName)}`).newline()
-  }
+    order_info: (e) =>
+      e
+        .align('center')
+        .bold(eb(fmt.boldTitle !== false))
+        .text(uc('Orden'))
+        .newline()
+        .bold(eb(fmt.boldOrderNumber !== false))
+        .text(uc(`#${escapeText(o.code || o.id)}`))
+        .newline()
+        .bold(eb()),
 
-  const kitchenAttendant = o.user?.name || o.collaborator?.user?.name
-  if (kitchenAttendant) {
-    enc = enc.text(`Atiende: ${escapeText(kitchenAttendant)}`).newline()
-  }
+    meta: (e) => {
+      e = e.align('center').bold(eb()).text(uc(timeStr)).newline()
 
-  if (o.notes) {
-    const noteLines = wrapText(`Notas: ${escapeText(o.notes)}`, columns)
-    enc = enc.newline().line('-').align('left')
-    for (const noteLine of noteLines) {
-      enc = enc.text(noteLine).newline()
-    }
-  }
+      if (branding.kitchenShowTableName && o.serviceType === 'EN_MESA' && cleanTableName) {
+        e = e.text(uc(`Mesa ${escapeText(cleanTableName)}`)).newline()
+      } else if (o.serviceType) {
+        e = e.text(uc(escapeText(o.serviceType))).newline()
+      }
 
-  const groups = groupKitchenItems(o.items ?? [])
-  for (const group of groups) {
-    const label =
-      group.station === 'COCINA'
-        ? `RONDA ${group.round}`
-        : `RONDA ${group.round} (${group.station})`
+      if (branding.kitchenShowCustomerName && o.customerName) {
+        e = e.text(uc(`Cliente: ${escapeText(o.customerName)}`)).newline()
+      }
 
-    enc = enc
-      .newline()
-      .align('center')
-      .line('-')
-      .bold(true)
-      .text(label)
-      .newline()
-      .line('-')
-      .bold(false)
-      .align('left')
+      const atiende = o.user?.name || o.collaborator?.user?.name
+      if (atiende) {
+        e = e.text(uc(`Atiende: ${escapeText(atiende)}`)).newline()
+      }
+      return e
+    },
 
-    for (const item of group.items) {
-      let name = escapeText(
-        item.menuItem?.name || item.item?.name || item.menuItemId || 'Item',
-      )
-      if (item.variantName) name += ` - ${escapeText(item.variantName)}`
+    notes: (e) => {
+      if (!o.notes) return e
+      e = e.newline().align('center').line('-').align('left').bold(eb(fmt.boldOrderNotes))
+      for (const linea of wrapText(uc(`Notas: ${escapeText(o.notes)}`), columns)) {
+        e = e.text(linea).newline()
+      }
+      return e.bold(eb())
+    },
 
-      // Los platos salen al mismo cuerpo que el nombre del negocio (width/height
-      // 2). Es lo que se lee de lejos y con prisa: en la cocina el ticket se mira
-      // colgado, no en la mano. El resto del ticket —hora, mesa, quien atiende—
-      // se queda en cuerpo normal: son datos de apoyo y agrandarlos solo gasta
-      // papel.
-      //
-      // OJO: a doble ancho entra la MITAD de caracteres por linea, asi que el
-      // corte de palabras se calcula sobre `columns / 2`. Usar `columns` aqui
-      // hacia que la impresora partiera el nombre por donde le tocara.
-      const dobleColumns = Math.floor(columns / 2)
-      const qtyWidth = 4
-      const nameWidth = dobleColumns - qtyWidth
-      const qtyStr = `${item.quantity}x `.padEnd(qtyWidth, ' ')
-      const nameLines = wrapText(name, nameWidth)
+    items: (e) => {
+      for (const group of groupKitchenItems(o.items ?? [])) {
+        const label =
+          group.station === 'COCINA'
+            ? `RONDA ${group.round}`
+            : `RONDA ${group.round} (${group.station})`
 
-      enc = enc.width(2).height(2)
-      if (nameLines.length === 1) {
-        enc = enc.text(`${qtyStr}${nameLines[0]}`).newline()
-      } else {
-        enc = enc.text(`${qtyStr}${nameLines[0]}`).newline()
-        for (let i = 1; i < nameLines.length; i++) {
-          enc = enc.text(`${' '.repeat(qtyWidth)}${nameLines[i]}`).newline()
+        e = e
+          .newline()
+          .align('center')
+          .line('-')
+          .bold(true)
+          .text(label)
+          .newline()
+          .line('-')
+          .bold(eb())
+          .align('left')
+
+        for (const item of group.items) {
+          let name = uc(escapeText(
+            item.menuItem?.name || item.item?.name || item.menuItemId || 'Item',
+          ))
+          if (item.variantName) name += ` - ${uc(escapeText(item.variantName))}`
+
+          // Los platos salen al mismo cuerpo que el nombre del negocio (width/height
+          // 2). Es lo que se lee de lejos y con prisa: en la cocina el ticket se mira
+          // colgado, no en la mano. El resto del ticket —hora, mesa, quien atiende—
+          // se queda en cuerpo normal: son datos de apoyo y agrandarlos solo gasta
+          // papel.
+          //
+          // OJO: a doble ancho entra la MITAD de caracteres por linea, asi que el
+          // corte de palabras se calcula sobre `columns / 2`. Usar `columns` aqui
+          // hacia que la impresora partiera el nombre por donde le tocara.
+          const dobleColumns = Math.floor(columns / 2)
+          const qtyWidth = 4
+          const nameWidth = dobleColumns - qtyWidth
+          const qtyStr = `${item.quantity}x `.padEnd(qtyWidth, ' ')
+          const nameLines = wrapText(name, nameWidth)
+
+          e = e.width(2).height(2)
+          e = e.text(`${qtyStr}${nameLines[0]}`).newline()
+          for (let i = 1; i < nameLines.length; i++) {
+            e = e.text(`${' '.repeat(qtyWidth)}${nameLines[i]}`).newline()
+          }
+          e = e.width(1).height(1)
+
+          if (branding.kitchenShowItemNotes && item.notes) {
+            const note = escapeText(item.notes)
+            e = e.text(`  * ${note.substring(0, columns - 4)}`).newline()
+          }
         }
       }
-      enc = enc.width(1).height(1)
+      return e
+    },
 
-      if (branding.kitchenShowItemNotes && item.notes) {
-        const note = escapeText(item.notes)
-        enc = enc.text(`  * ${note.substring(0, columns - 4)}`).newline()
-      }
-    }
+    // Una comanda no lleva importes: la cocina no cobra.
+    total: (e) => e,
+
+    footer: (e) => {
+      if (!branding.kitchenFooterText) return e
+      return e
+        .newline()
+        .align('center')
+        .bold(eb(fmt.boldCustomText))
+        .text(uc(escapeText(branding.kitchenFooterText)))
+        .newline()
+        .bold(eb())
+    },
   }
 
-  if (branding.kitchenFooterText) {
-    enc = enc.newline().align('center').text(escapeText(branding.kitchenFooterText)).newline()
+  let enc = encoder.initialize().codepage('cp858')
+
+  for (const clave of seccionesOrdenadas(fmt, KITCHEN_SECTIONS)) {
+    enc = secciones[clave](enc)
   }
 
   return enc.newline().newline().newline().newline().newline().cut().encode()

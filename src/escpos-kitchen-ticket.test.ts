@@ -113,7 +113,10 @@ describe('comanda de cocina · tamaño de letra', () => {
       ),
     )
 
-    const posMesa = t.indexOf('Mesa 4')
+    // MAYUSCULAS: el agente ya obedece al panel «Formato avanzado», cuyo
+    // formato de cocina trae `uppercase: true` por defecto. Antes ignoraba el
+    // panel entero y salia tal cual venia el dato.
+    const posMesa = t.indexOf('MESA 4')
     expect(posMesa).toBeGreaterThan(-1)
     expect(t.lastIndexOf(NORMAL, posMesa)).toBeGreaterThan(
       t.lastIndexOf(DOBLE, posMesa),
