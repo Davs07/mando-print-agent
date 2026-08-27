@@ -2,11 +2,13 @@
   "origen": "@mando/printing",
   "archivos": {
     "escpos/helpers.ts": "59dfbd8c59f70471",
-    "escpos/kitchen.ts": "a9e35bdd486d6cae",
-    "format.ts": "c7233120c6a50bd1",
-    "index.ts": "802f1f934f5b1633",
+    "escpos/kitchen.ts": "699ca8c70584f4fc",
+    "format.ts": "07f70700d723c509",
+    "index.ts": "04ff8dcfd1a05dc8",
+    "preview/parse.ts": "d839639a9007e6ce",
+    "preview/sample.ts": "f3b2b90e120e44db",
     "receipt-printer-encoder.d.ts": "089b4057f9a54c4f",
     "types.ts": "301c918051e2742a"
   },
-  "commit": "288769d9"
+  "commit": "dd4d2ff1"
 }

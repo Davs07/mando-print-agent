@@ -6,6 +6,7 @@ import {
   DEFAULT_KITCHEN_FORMAT,
   leerFormato,
   seccionesOrdenadas,
+  tamanoDeSeccion,
   type PrintFormatConfig,
   type PrintSectionKey,
 } from "../format";
@@ -51,6 +52,20 @@ export function encodeKitchenTicket(
   const uc = (s: string) => (fmt.uppercase ? s.toUpperCase() : s);
   const eb = (flag?: boolean) => (fmt.extraBold ? true : (flag ?? false));
 
+  /** El cuerpo que el negocio eligió para una sección, ya validado. */
+  const cuerpo = (k: PrintSectionKey) =>
+    tamanoDeSeccion(fmt, k, DEFAULT_KITCHEN_FORMAT);
+
+  /**
+   * Cuántos caracteres entran por línea a un cuerpo dado.
+   *
+   * Es la parte que de verdad importa de los tamaños: a 2× entra la mitad y a
+   * 3× un tercio. Calcular el corte sobre `columns` sin dividir hace que la
+   * impresora parta las palabras por donde le toque — ya pasó una vez cuando el
+   * doble ancho estaba fijo.
+   */
+  const columnasA = (n: number) => Math.max(1, Math.floor(columns / n));
+
   const createdAt = order.createdAt ? new Date(order.createdAt) : new Date();
   const timeStr = createdAt.toLocaleTimeString("es-PE", {
     hour: "2-digit",
@@ -74,8 +89,8 @@ export function encodeKitchenTicket(
       e
         .align("center")
         .bold(eb(fmt.boldBusinessName !== false))
-        .width(2)
-        .height(2)
+        .width(cuerpo("header"))
+        .height(cuerpo("header"))
         .text(uc(escapeText(branding.businessName || "COMANDA")))
         .newline()
         .width(1)
@@ -88,16 +103,26 @@ export function encodeKitchenTicket(
     order_info: (e) =>
       e
         .align("center")
+        .width(cuerpo("order_info"))
+        .height(cuerpo("order_info"))
         .bold(eb(fmt.boldTitle !== false))
         .text(uc("Orden"))
         .newline()
         .bold(eb(fmt.boldOrderNumber !== false))
         .text(uc("#" + escapeText(order.code || order.id)))
         .newline()
+        .width(1)
+        .height(1)
         .bold(eb()),
 
     meta: (e) => {
-      e = e.align("center").bold(eb()).text(uc(timeStr)).newline();
+      e = e
+        .align("center")
+        .width(cuerpo("meta"))
+        .height(cuerpo("meta"))
+        .bold(eb())
+        .text(uc(timeStr))
+        .newline();
 
       if (branding.kitchenShowTableName && order.serviceType === "EN_MESA" && mesa) {
         e = e.text(uc("Mesa " + escapeText(mesa))).newline();
@@ -110,7 +135,7 @@ export function encodeKitchenTicket(
       if (order.attendantName) {
         e = e.text(uc("Atiende: " + escapeText(order.attendantName))).newline();
       }
-      return e;
+      return e.width(1).height(1);
     },
 
     notes: (e) => {
@@ -120,11 +145,14 @@ export function encodeKitchenTicket(
         .align("center")
         .line("-")
         .align("left")
+        .width(cuerpo("notes"))
+        .height(cuerpo("notes"))
         .bold(eb(fmt.boldOrderNotes));
-      for (const linea of wrapText(uc("Notas: " + escapeText(order.notes)), columns)) {
+      const anchoNotas = columnasA(cuerpo("notes"));
+      for (const linea of wrapText(uc("Notas: " + escapeText(order.notes)), anchoNotas)) {
         e = e.text(linea).newline();
       }
-      return e.bold(eb());
+      return e.width(1).height(1).bold(eb());
     },
 
     items: (e) => {
@@ -163,13 +191,16 @@ export function encodeKitchenTicket(
            * Con `columns` sin dividir, la impresora parte el nombre por donde
            * le toca.
            */
-          const dobleColumns = Math.floor(columns / 2);
+          const anchoPlatos = columnasA(cuerpo("items"));
           const qtyWidth = 4;
-          const nameWidth = dobleColumns - qtyWidth;
+          const nameWidth = Math.max(1, anchoPlatos - qtyWidth);
           const qtyStr = (item.quantity + "x ").padEnd(qtyWidth, " ");
           const nameLines = wrapText(name, nameWidth);
 
-          e = e.bold(eb(fmt.boldItemNames !== false)).width(2).height(2);
+          e = e
+            .bold(eb(fmt.boldItemNames !== false))
+            .width(cuerpo("items"))
+            .height(cuerpo("items"));
           e = e.text(qtyStr + nameLines[0]).newline();
           for (let i = 1; i < nameLines.length; i++) {
             e = e.text(" ".repeat(qtyWidth) + nameLines[i]).newline();
@@ -193,9 +224,13 @@ export function encodeKitchenTicket(
       return e
         .newline()
         .align("center")
+        .width(cuerpo("footer"))
+        .height(cuerpo("footer"))
         .bold(eb(fmt.boldCustomText))
         .text(uc(escapeText(branding.kitchenFooterText)))
         .newline()
+        .width(1)
+        .height(1)
         .bold(eb());
     },
   };

@@ -30,3 +30,8 @@ export {
   encodeKitchenTicket,
   type KitchenTicketOptions,
 } from "./escpos/kitchen";
+
+// Vista previa: el contrario exacto del encoder. Vive aquí para que no pueda
+// separarse de lo que realmente se imprime.
+export { parseEscPos, type PreviewLine } from "./preview/parse";
+export { PEDIDO_DE_MUESTRA, BRANDING_DE_MUESTRA } from "./preview/sample";
