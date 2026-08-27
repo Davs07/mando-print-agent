@@ -15,7 +15,10 @@
     "electron:dev": "electron-vite dev",
     "electron:build": "electron-vite build",
     "dist": "npm run electron:build && electron-builder -c electron-builder.config.ts --publish never",
-    "dist:publish": "npm run electron:build && electron-builder -c electron-builder.config.ts --publish always"
+    "dist:publish": "npm run electron:build && electron-builder -c electron-builder.config.ts --publish always",
+    "sync:printing": "node scripts/sync-printing.mjs",
+    "verify:printing": "node scripts/verify-printing.mjs",
+    "pretest": "node scripts/verify-printing.mjs"
   },
   "_comentario_dependencias": "Solo lo que se necesita EN RUNTIME va en dependencies: electron-builder empaqueta estas y descarta devDependencies. React se usa unicamente en el renderer, que Vite bundlea, asi que es dependencia de build y no debe viajar en el instalador.",
   "dependencies": {

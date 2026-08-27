@@ -35,20 +35,25 @@ vi.mock('socket.io-client', () => ({
 // Sustituimos el encoder para evitar dependencia real en tests unitarios
 
 vi.mock('@point-of-sale/receipt-printer-encoder', () => {
-  const EncoderMock = vi.fn().mockImplementation(() => ({
-    initialize: vi.fn().mockReturnThis(),
-    codepage: vi.fn().mockReturnThis(),
-    align: vi.fn().mockReturnThis(),
-    bold: vi.fn().mockReturnThis(),
-    width: vi.fn().mockReturnThis(),
-    height: vi.fn().mockReturnThis(),
-    text: vi.fn().mockReturnThis(),
-    newline: vi.fn().mockReturnThis(),
-    line: vi.fn().mockReturnThis(),
-    cut: vi.fn().mockReturnThis(),
-    encode: vi.fn().mockReturnValue(new Uint8Array([0x1b, 0x40])),
-  }))
-  return { default: EncoderMock }
+  /**
+   * Clase de verdad, no un `vi.fn()`. El encoder se importa con `import X from`
+   * y segun el interop la funcion mock no siempre llega como constructor; una
+   * clase es constructible en todos los casos.
+   */
+  class EncoderMock {
+    initialize() { return this }
+    codepage() { return this }
+    align() { return this }
+    bold() { return this }
+    width() { return this }
+    height() { return this }
+    text() { return this }
+    newline() { return this }
+    line() { return this }
+    cut() { return this }
+    encode() { return new Uint8Array([0x1b, 0x40]) }
+  }
+  return { default: EncoderMock, __esModule: true }
 })
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

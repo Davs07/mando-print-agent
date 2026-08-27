@@ -1,0 +1,12 @@
+{
+  "origen": "@mando/printing",
+  "archivos": {
+    "escpos/helpers.ts": "59dfbd8c59f70471",
+    "escpos/kitchen.ts": "a9e35bdd486d6cae",
+    "format.ts": "c7233120c6a50bd1",
+    "index.ts": "802f1f934f5b1633",
+    "receipt-printer-encoder.d.ts": "089b4057f9a54c4f",
+    "types.ts": "301c918051e2742a"
+  },
+  "commit": "288769d9"
+}
