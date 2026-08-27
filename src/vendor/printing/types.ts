@@ -50,6 +50,12 @@ export interface TicketOrder {
   attendantName?: string | null;
   notes?: string | null;
   items: TicketItem[];
+
+  // ── Importes. Solo los usa el comprobante; la comanda no cobra. ──
+  subtotal?: number | string | null;
+  tax?: number | string | null;
+  discount?: number | string | null;
+  total?: number | string | null;
 }
 
 /** Lo que el negocio configuró sobre qué se enseña y con qué textos. */

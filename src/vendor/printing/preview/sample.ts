@@ -21,6 +21,8 @@ export const PEDIDO_DE_MUESTRA: TicketOrder = {
   customerName: "Aldomar Bermeo",
   attendantName: "Rodrigo",
   notes: "Cliente con prisa, sale a las 19:00",
+  subtotal: 138,
+  total: 138,
   items: [
     {
       quantity: 2,

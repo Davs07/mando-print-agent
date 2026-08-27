@@ -73,6 +73,12 @@ export const DEFAULT_RECEIPT_FORMAT: PrintFormatConfig = {
   boldCustomText: false,
   uppercase: false,
   sectionOrder: ["logo", "header", "order_info", "meta", "items", "notes", "total", "footer"],
+  /**
+   * Solo el nombre del negocio va agrandado. En el comprobante los importes
+   * tienen que caber en columnas alineadas, y agrandar los ítems parte los
+   * nombres y descuadra los precios.
+   */
+  sectionSizes: { header: 2 },
 };
 
 /** Multiplicadores que ofrece la interfaz. El hardware admite hasta 8. */

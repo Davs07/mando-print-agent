@@ -3,12 +3,13 @@
   "archivos": {
     "escpos/helpers.ts": "59dfbd8c59f70471",
     "escpos/kitchen.ts": "699ca8c70584f4fc",
-    "format.ts": "07f70700d723c509",
-    "index.ts": "04ff8dcfd1a05dc8",
+    "escpos/receipt.ts": "b94b798ec1f46095",
+    "format.ts": "040eadb7d44bf732",
+    "index.ts": "bd4de22c670afa8f",
     "preview/parse.ts": "d839639a9007e6ce",
-    "preview/sample.ts": "f3b2b90e120e44db",
+    "preview/sample.ts": "1d6ac29fea1b4ddf",
     "receipt-printer-encoder.d.ts": "089b4057f9a54c4f",
-    "types.ts": "301c918051e2742a"
+    "types.ts": "f3f1805aefe01eb5"
   },
-  "commit": "dd4d2ff1"
+  "commit": "cbe03c04"
 }

@@ -30,6 +30,10 @@ export {
   encodeKitchenTicket,
   type KitchenTicketOptions,
 } from "./escpos/kitchen";
+export {
+  encodeReceiptTicket,
+  type ReceiptTicketOptions,
+} from "./escpos/receipt";
 
 // Vista previa: el contrario exacto del encoder. Vive aquí para que no pueda
 // separarse de lo que realmente se imprime.
