@@ -345,21 +345,31 @@ export function encodeKitchenTicket(
       )
       if (item.variantName) name += ` - ${escapeText(item.variantName)}`
 
+      // Los platos salen al mismo cuerpo que el nombre del negocio (width/height
+      // 2). Es lo que se lee de lejos y con prisa: en la cocina el ticket se mira
+      // colgado, no en la mano. El resto del ticket —hora, mesa, quien atiende—
+      // se queda en cuerpo normal: son datos de apoyo y agrandarlos solo gasta
+      // papel.
+      //
+      // OJO: a doble ancho entra la MITAD de caracteres por linea, asi que el
+      // corte de palabras se calcula sobre `columns / 2`. Usar `columns` aqui
+      // hacia que la impresora partiera el nombre por donde le tocara.
+      const dobleColumns = Math.floor(columns / 2)
       const qtyWidth = 4
-      const nameWidth = columns - qtyWidth
+      const nameWidth = dobleColumns - qtyWidth
       const qtyStr = `${item.quantity}x `.padEnd(qtyWidth, ' ')
       const nameLines = wrapText(name, nameWidth)
 
+      enc = enc.width(2).height(2)
       if (nameLines.length === 1) {
-        enc = enc.text(`${qtyStr}${nameLines[0].padEnd(nameWidth, ' ')}`).newline()
+        enc = enc.text(`${qtyStr}${nameLines[0]}`).newline()
       } else {
         enc = enc.text(`${qtyStr}${nameLines[0]}`).newline()
-        for (let i = 1; i < nameLines.length - 1; i++) {
+        for (let i = 1; i < nameLines.length; i++) {
           enc = enc.text(`${' '.repeat(qtyWidth)}${nameLines[i]}`).newline()
         }
-        const lastLine = nameLines[nameLines.length - 1].padEnd(nameWidth, ' ')
-        enc = enc.text(`${' '.repeat(qtyWidth)}${lastLine}`).newline()
       }
+      enc = enc.width(1).height(1)
 
       if (branding.kitchenShowItemNotes && item.notes) {
         const note = escapeText(item.notes)
