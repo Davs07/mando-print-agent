@@ -1,3 +1,4 @@
+import type { CashCloseData } from "../escpos/cash-close";
 import type { TicketBranding, TicketOrder } from "../types";
 
 /**
@@ -62,4 +63,36 @@ export const BRANDING_DE_MUESTRA: TicketBranding = {
   receiptShowCustomerName: true,
   receiptShowItemNotes: true,
   receiptShowOrderNotes: true,
+};
+
+/**
+ * El cierre de caja de muestra.
+ *
+ * Con diferencia NEGATIVA a propósito: es el caso que el dueño mira de verdad
+ * —falta plata en el cajón— y el que conviene ver bien maquetado antes de que
+ * pase en serio.
+ */
+export const CIERRE_DE_MUESTRA: CashCloseData = {
+  cashBoxName: "Caja principal",
+  openedByName: "Rodrigo",
+  closedByName: "Rodrigo",
+  openedAt: "2026-08-27T17:00:00.000Z",
+  closedAt: "2026-08-28T04:00:00.000Z",
+  initialAmount: 100,
+  salesByMethod: [
+    { label: "Efectivo", total: 640 },
+    { label: "Yape", total: 310 },
+    { label: "Tarjeta", total: 180 },
+  ],
+  totalSales: 1130,
+  totalIncome: 0,
+  totalExpense: 45,
+  orders: [
+    { code: "20260827-012", table: "Mesa 3", total: 74 },
+    { code: "20260827-013", table: "Mesa 1", total: 122 },
+    { code: "20260827-014", table: "Mesa 6", total: 138 },
+  ],
+  expectedAmount: 695,
+  countedAmount: 690,
+  difference: -5,
 };

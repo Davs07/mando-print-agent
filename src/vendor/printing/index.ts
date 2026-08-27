@@ -34,8 +34,24 @@ export {
   encodeReceiptTicket,
   type ReceiptTicketOptions,
 } from "./escpos/receipt";
+export {
+  encodeCashCloseTicket,
+  type CashCloseData,
+  type CashCloseLine,
+  type CashCloseTicketOptions,
+} from "./escpos/cash-close";
 
 // Vista previa: el contrario exacto del encoder. Vive aquí para que no pueda
 // separarse de lo que realmente se imprime.
 export { parseEscPos, type PreviewLine } from "./preview/parse";
-export { PEDIDO_DE_MUESTRA, BRANDING_DE_MUESTRA } from "./preview/sample";
+export {
+  renderTicketLinesHtml,
+  renderTicketDocument,
+  ticketCss,
+  type RenderHtmlOptions,
+} from "./preview/render-html";
+export {
+  PEDIDO_DE_MUESTRA,
+  BRANDING_DE_MUESTRA,
+  CIERRE_DE_MUESTRA,
+} from "./preview/sample";

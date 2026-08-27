@@ -1,15 +1,17 @@
 {
   "origen": "@mando/printing",
   "archivos": {
+    "escpos/cash-close.ts": "ef6ac31fc89ba5f5",
     "escpos/helpers.ts": "59dfbd8c59f70471",
     "escpos/kitchen.ts": "699ca8c70584f4fc",
     "escpos/receipt.ts": "b94b798ec1f46095",
     "format.ts": "040eadb7d44bf732",
-    "index.ts": "bd4de22c670afa8f",
+    "index.ts": "992c2b60d3e71dc7",
     "preview/parse.ts": "d839639a9007e6ce",
-    "preview/sample.ts": "1d6ac29fea1b4ddf",
+    "preview/render-html.ts": "d20e1accfbace2a2",
+    "preview/sample.ts": "0658116336b03000",
     "receipt-printer-encoder.d.ts": "089b4057f9a54c4f",
     "types.ts": "f3f1805aefe01eb5"
   },
-  "commit": "cbe03c04"
+  "commit": "85a46b8c"
 }
