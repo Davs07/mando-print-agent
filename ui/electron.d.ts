@@ -10,6 +10,7 @@ declare global {
       saveConfig: (data: Record<string, string>) => Promise<{ ok: boolean; error?: string }>
       restartAgent: () => Promise<void>
       openEnvFile: () => Promise<void>
+      getVersion: () => Promise<string>
     }
   }
 }

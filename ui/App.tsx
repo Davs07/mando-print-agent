@@ -13,10 +13,15 @@ export default function App() {
   const [status, setStatus] = useState<AgentStatusEvent>({ status: 'connecting' })
   const [jobs, setJobs] = useState<JobEntry[]>([])
   const [config, setConfig] = useState<Record<string, string> | null>(null)
+  // `null` mientras carga: no se muestra ningun numero hasta tener el real, en
+  // vez de arriesgarse a mostrar uno fijo que se desactualiza sin avisar (era
+  // "v1.0.0" a mano mientras el instalador ya iba en 1.1.1).
+  const [version, setVersion] = useState<string | null>(null)
 
   // Load config & subscribe to IPC events
   useEffect(() => {
     void window.api.loadConfig().then(setConfig)
+    void window.api.getVersion().then(setVersion)
 
     const off1 = window.api.onAgentStatus(setStatus)
     const off2 = window.api.onAgentJob((job) => {
@@ -56,7 +61,7 @@ export default function App() {
         <div className="flex items-center gap-3">
           <span className="text-xl">🖨</span>
           <span className="font-semibold text-white tracking-tight">Mando Print Agent</span>
-          <span className="text-xs text-gray-500 font-mono">v1.0.0</span>
+          {version && <span className="text-xs text-gray-500 font-mono">v{version}</span>}
         </div>
         <StatusCard status={status} />
       </header>

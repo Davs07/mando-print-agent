@@ -106,7 +106,8 @@ function createWindow(): void {
     height: 640,
     minWidth: 780,
     minHeight: 520,
-    title: 'Mando Print Agent',
+    // También en la barra de tareas / Alt+Tab, no solo dentro de la ventana.
+    title: `Mando Print Agent v${app.getVersion()}`,
     backgroundColor: '#030712',
     autoHideMenuBar: true,
     webPreferences: {
@@ -177,6 +178,15 @@ async function startAgent(): Promise<void> {
 }
 
 // ─── IPC Handlers ─────────────────────────────────────────────────────────────
+
+/**
+ * `app.getVersion()` lee el campo `version` de `package.json` — empaquetado o
+ * no, es el mismo dato que usa `electron-builder` para nombrar el instalador.
+ * Un solo origen a propósito: el header ya mostraba "v1.0.0" fijo mientras
+ * `package.json` iba por 1.1.1, y nadie lo notó porque no había forma de que
+ * ese texto fallara al compilar.
+ */
+ipcMain.handle('app:version', (): string => app.getVersion())
 
 ipcMain.handle('config:load', (): Record<string, string> | null => {
   const envPath = getEnvPath()

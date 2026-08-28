@@ -37,4 +37,7 @@ contextBridge.exposeInMainWorld('api', {
 
   openEnvFile: (): Promise<void> =>
     ipcRenderer.invoke('app:open-env'),
+
+  getVersion: (): Promise<string> =>
+    ipcRenderer.invoke('app:version'),
 })
