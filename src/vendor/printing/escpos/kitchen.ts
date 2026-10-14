@@ -16,6 +16,8 @@ import {
   type TicketBranding,
   type TicketOrder,
 } from "../types";
+import { plantillaDeFormato } from "../plantilla/leer";
+import { encodeDocumento } from "../plantilla/motor";
 import { escapeText, groupKitchenItems, wrapText } from "./helpers";
 
 /** Secciones de la comanda, en su orden por defecto. */
@@ -44,6 +46,19 @@ export function encodeKitchenTicket(
   branding: TicketBranding,
   options: KitchenTicketOptions = {},
 ): Uint8Array {
+  /**
+   * Si el negocio diseño este documento en el editor, MANDA su plantilla. Va
+   * aquí —y no en cada llamador— para que Bluetooth, RawBT, WiFi y el agente la
+   * obedezcan sin tocar ninguno. Sin plantilla, sigue el código de siempre.
+   */
+  const plantilla = plantillaDeFormato(options.format, "comanda");
+  if (plantilla) {
+    return encodeDocumento({ kind: "comanda", pedido: order }, branding, {
+      paperWidth: options.paperWidth,
+      plantilla,
+    }).bytes;
+  }
+
   const paperWidth = options.paperWidth ?? "80mm";
   const columns = columnasDe(paperWidth);
   const encoder = new ReceiptPrinterEncoder({ language: "esc-pos", columns });

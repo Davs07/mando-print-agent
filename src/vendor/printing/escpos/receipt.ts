@@ -16,6 +16,8 @@ import {
   type TicketBranding,
   type TicketOrder,
 } from "../types";
+import { plantillaDeFormato } from "../plantilla/leer";
+import { encodeDocumento } from "../plantilla/motor";
 import { escapeText, wrapText } from "./helpers";
 
 /** Secciones del comprobante, en su orden por defecto. */
@@ -59,6 +61,22 @@ export function encodeReceiptTicket(
   branding: TicketBranding,
   options: ReceiptTicketOptions = {},
 ): Uint8Array {
+  /**
+   * Si el negocio diseño este documento en el editor, MANDA su plantilla. Va
+   * aquí —y no en cada llamador— para que Bluetooth, RawBT, WiFi y el agente la
+   * obedezcan sin tocar ninguno. Sin plantilla, sigue el código de siempre.
+   */
+  const kind = options.preventa ? "precuenta" : "comprobante";
+  const plantilla = plantillaDeFormato(options.format, kind);
+  if (plantilla) {
+    return encodeDocumento({ kind, pedido: order, documento: options.document }, branding, {
+      paperWidth: options.paperWidth,
+      plantilla,
+      currency: options.currency,
+      storeName: options.storeName,
+    }).bytes;
+  }
+
   const paperWidth = options.paperWidth ?? "80mm";
   const columns = columnasDe(paperWidth);
   const encoder = new ReceiptPrinterEncoder({ language: "esc-pos", columns });

@@ -31,6 +31,11 @@ declare module '@point-of-sale/receipt-printer-encoder' {
     line(value: string): Encoder;
     rule(options?: { style?: 'single' | 'double'; width?: number }): Encoder;
     align(alignment: EncoderAlignment): Encoder;
+    /**
+     * Fuente A (normal) o B (mas estrecha). La libreria RECALCULA las columnas
+     * con ella: 32 -> 42 en 58mm y 48 -> 64 en 80mm.
+     */
+    font(type: 'A' | 'B'): Encoder;
     bold(enabled?: boolean): Encoder;
     underline(enabled?: boolean): Encoder;
     invert(enabled?: boolean): Encoder;
@@ -66,6 +71,7 @@ declare module '@point-of-sale/receipt-printer-encoder' {
     line(value: string): Encoder;
     rule(options?: { style?: 'single' | 'double'; width?: number }): Encoder;
     align(alignment: EncoderAlignment): Encoder;
+    font(type: 'A' | 'B'): Encoder;
     bold(enabled?: boolean): Encoder;
     underline(enabled?: boolean): Encoder;
     invert(enabled?: boolean): Encoder;

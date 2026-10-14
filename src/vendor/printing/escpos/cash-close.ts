@@ -9,12 +9,25 @@ import {
   type PrintFormatConfig,
 } from "../format";
 import { columnasDe, type PaperWidth, type TicketBranding } from "../types";
+import { plantillaDeFormato } from "../plantilla/leer";
+import { encodeDocumento } from "../plantilla/motor";
 import { escapeText } from "./helpers";
 
 /** Una fila del cierre: concepto a la izquierda, importe a la derecha. */
 export interface CashCloseLine {
   label: string;
   total: number;
+}
+
+/** Un ingreso o egreso manual de la caja, para el detalle del cierre. */
+export interface CashCloseMovement {
+  type: "INCOME" | "EXPENSE";
+  /** Lo que escribio quien lo registro. Es lo unico que explica el egreso. */
+  description: string;
+  /** Categoria ya legible («Insumos»), no el enum. */
+  category?: string | null;
+  amount: number;
+  at?: string | null;
 }
 
 export interface CashCloseData {
@@ -36,6 +49,30 @@ export interface CashCloseData {
    * noche. Para cuadrar basta código, mesa y total; el detalle está en pantalla.
    */
   orders?: { code: string; table?: string | null; total: number }[];
+  /**
+   * Ventas cobradas en EFECTIVO: lo unico de las ventas que entra al cajon.
+   * Opcional porque los llamadores viejos no lo mandan; sin el, la cuenta del
+   * cajon de la plantilla no enseña la linea de ventas en efectivo (y lo que no
+   * suma lo cubre la fila «Ajustes», ver `cash_count`).
+   */
+  cashSales?: number | null;
+  /**
+   * Plata metida al cajon A MANO (propinas, sencillo), SIN las ventas.
+   *
+   * Existe porque `totalIncome` de la API NO sirve para la cuenta del cajon:
+   * cada cobro en efectivo crea un movimiento INGRESO/VENTA y el resumen suma
+   * todos los INGRESO salvo la apertura, asi que `totalIncome` ya incluye las
+   * ventas en efectivo. Sumarlo junto a `cashSales` las contaria dos veces.
+   */
+  manualIncome?: number | null;
+  /**
+   * Plata sacada a mano, SIN el ajuste que se crea al cerrar con diferencia
+   * (movimiento CIERRE_CAJA): ese tambien entra en `totalExpense`, y contarlo
+   * en la cuenta del cajon haria que la diferencia se explicara a si misma.
+   */
+  manualExpense?: number | null;
+  /** Detalle de ingresos y egresos. Solo lo usa la plantilla, si lo muestra. */
+  movements?: CashCloseMovement[];
   expectedAmount?: number | null;
   countedAmount?: number | null;
   difference?: number | null;
@@ -83,6 +120,20 @@ export function encodeCashCloseTicket(
   branding: TicketBranding,
   options: CashCloseTicketOptions = {},
 ): Uint8Array {
+  /**
+   * Si el negocio diseño este documento en el editor, MANDA su plantilla. Va
+   * aquí —y no en cada llamador— para que Bluetooth, RawBT, WiFi y el agente la
+   * obedezcan sin tocar ninguno. Sin plantilla, sigue el código de siempre.
+   */
+  const plantilla = plantillaDeFormato(options.format, "cierre");
+  if (plantilla) {
+    return encodeDocumento({ kind: "cierre", cierre: data }, branding, {
+      paperWidth: options.paperWidth,
+      plantilla,
+      printedAt: options.printedAt,
+    }).bytes;
+  }
+
   const paperWidth = options.paperWidth ?? "80mm";
   const columns = columnasDe(paperWidth);
   const encoder = new ReceiptPrinterEncoder({ language: "esc-pos", columns });

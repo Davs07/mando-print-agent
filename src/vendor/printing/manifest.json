@@ -1,17 +1,26 @@
 {
   "origen": "@mando/printing",
   "archivos": {
-    "escpos/cash-close.ts": "ef6ac31fc89ba5f5",
-    "escpos/helpers.ts": "59dfbd8c59f70471",
-    "escpos/kitchen.ts": "699ca8c70584f4fc",
-    "escpos/receipt.ts": "b94b798ec1f46095",
-    "format.ts": "040eadb7d44bf732",
-    "index.ts": "992c2b60d3e71dc7",
-    "preview/parse.ts": "d839639a9007e6ce",
-    "preview/render-html.ts": "d20e1accfbace2a2",
-    "preview/sample.ts": "0658116336b03000",
-    "receipt-printer-encoder.d.ts": "089b4057f9a54c4f",
-    "types.ts": "f3f1805aefe01eb5"
+    "escpos/cash-close.ts": "978691efc90701ab",
+    "escpos/helpers.ts": "c144d89317773ddf",
+    "escpos/kitchen.ts": "7eae757eeef285b6",
+    "escpos/receipt.ts": "b1f20da8a2ffa375",
+    "format.ts": "3a8d861e550e2adb",
+    "index.ts": "580ea3850b533e20",
+    "plantilla/catalogo.ts": "bd77328caf307a1c",
+    "plantilla/index.ts": "82b21b1d66ff239c",
+    "plantilla/leer.ts": "360bf4d05e44ef1b",
+    "plantilla/legado.ts": "d50f4c5a8d5b615b",
+    "plantilla/motor.ts": "616212c483d9fe31",
+    "plantilla/muestras.ts": "22d171ce44ff4630",
+    "plantilla/presets.ts": "37c3f72a0e143533",
+    "plantilla/testing.ts": "e940378189d515d9",
+    "plantilla/tipos.ts": "ede4b6556638cbd9",
+    "preview/parse.ts": "71c57bda45559c66",
+    "preview/render-html.ts": "479bc85b203cbd8f",
+    "preview/sample.ts": "4362098a8e86b1c7",
+    "receipt-printer-encoder.d.ts": "dec1aa7a0a4374eb",
+    "types.ts": "f73fcb815f98d8ef"
   },
-  "commit": "85a46b8c"
+  "commit": "b8885b0b2"
 }

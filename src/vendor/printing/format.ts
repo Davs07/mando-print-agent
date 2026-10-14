@@ -7,6 +7,8 @@
  * leía nadie, y el agente ignoraba el formato entero.
  */
 
+import type { DocumentKind, TicketTemplate } from "./plantilla/tipos";
+
 export type PrintSectionKey =
   | "logo"
   | "header"
@@ -38,6 +40,15 @@ export interface PrintFormatConfig {
    * y a 3× un tercio — el corte de palabras se recalcula solo.
    */
   sectionSizes?: Partial<Record<PrintSectionKey, number>>;
+  /**
+   * Plantillas por documento, del editor de tickets. Cuando un documento tiene
+   * la suya, MANDA ella y todo lo de arriba se ignora para ese documento; sin
+   * plantilla, sale el formato clasico de siempre, byte a byte.
+   *
+   * Viven aqui dentro y no en una columna propia para que lleguen a todos los
+   * caminos de impresion por donde ya viaja este JSON. Ver `plantilla/leer.ts`.
+   */
+  templates?: Partial<Record<DocumentKind, TicketTemplate>>;
 }
 
 export const DEFAULT_KITCHEN_FORMAT: PrintFormatConfig = {

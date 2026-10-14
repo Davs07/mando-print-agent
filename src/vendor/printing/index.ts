@@ -38,8 +38,12 @@ export {
   encodeCashCloseTicket,
   type CashCloseData,
   type CashCloseLine,
+  type CashCloseMovement,
   type CashCloseTicketOptions,
 } from "./escpos/cash-close";
+
+// El editor de tickets: plantilla por documento, catalogo de bloques y motor.
+export * from "./plantilla";
 
 // Vista previa: el contrario exacto del encoder. Vive aquí para que no pueda
 // separarse de lo que realmente se imprime.

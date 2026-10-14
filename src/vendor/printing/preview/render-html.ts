@@ -23,6 +23,16 @@ import type { PreviewLine } from "./parse";
  * - El ancho en `ch`: una columna de pantalla es una columna de papel.
  * - La sangría se dibuja a cuerpo NORMAL aunque el texto vaya agrandado, porque
  *   el encoder la emite antes del comando de tamaño.
+ * - Ancho y alto son independientes (`GS ! n`): «Alta» es el doble de alta y del
+ *   MISMO ancho, «Ancha» al revés. Se dibuja con el cuerpo del ALTO y se
+ *   estira o encoge en horizontal con `scaleX`; el resto de la línea no se
+ *   entera porque una transformación no mueve el diseño.
+ * - La fuente B es más estrecha: 9 de los 12 puntos de la A. Entran 4/3 de
+ *   columnas, y se dibuja a 3/4 del cuerpo.
+ *
+ * CONTRATO con el editor: cada `PreviewLine` es EXACTAMENTE un elemento hijo
+ * directo del resultado, en orden, y lleva `data-linea="<índice>"`. Es lo que
+ * deja seleccionar un bloque tocando su línea (ver `bloquePorLinea`).
  */
 
 export interface RenderHtmlOptions {
@@ -46,25 +56,40 @@ export function renderTicketLinesHtml(
   const base = options.fontSizePx ?? 11;
 
   return lineas
-    .map((l) => {
+    .map((l, i) => {
       if (l.texto.trim().length === 0) {
-        return '<div class="mp-sp"></div>';
+        return `<div class="mp-sp" data-linea="${i}"></div>`;
       }
+
+      // Una columna de fuente B mide 3/4 de una de A.
+      const ff = l.fuente === "B" ? 0.75 : 1;
+      const cuerpo = Math.round(base * ff * 1000) / 1000;
+      // Sin `alto` (lineas armadas a mano, o de antes) el cuerpo es cuadrado.
+      const alto = l.alto ?? l.escala;
+      const fs = Math.round(cuerpo * alto * 1000) / 1000;
+      const estira = l.escala / alto;
 
       const margen =
         l.sangria > 0
-          ? `<span class="mp-margen" style="width:${l.sangria}ch"></span>`
+          ? `<span class="mp-margen" style="width:${l.sangria}ch${
+              ff !== 1 ? `;font-size:${cuerpo}px` : ""
+            }"></span>`
           : "";
 
       const estilos = [
-        l.escala > 1 ? `font-size:${base * l.escala}px` : "",
+        fs !== base ? `font-size:${fs}px` : "",
         l.escala > 1 || l.negrita ? "font-weight:700" : "",
+        Math.abs(estira - 1) > 1e-6
+          ? `display:inline-block;transform-origin:0 0;transform:scaleX(${
+              Math.round(estira * 1000) / 1000
+            })`
+          : "",
       ]
         .filter(Boolean)
         .join(";");
 
-      const alto = l.escala > 1 ? ' style="line-height:1.2"' : "";
-      return `<div class="mp-ln"${alto}>${margen}<span style="${estilos}">${escapar(l.texto)}</span></div>`;
+      const interlineado = l.escala > 1 || alto > 1 ? ' style="line-height:1.2"' : "";
+      return `<div class="mp-ln" data-linea="${i}"${interlineado}>${margen}<span style="${estilos}">${escapar(l.texto)}</span></div>`;
     })
     .join("");
 }

@@ -39,6 +39,18 @@ export interface PreviewLine {
    */
   escala: number;
   negrita: boolean;
+  /**
+   * Multiplicador del ALTO, de 1 a 8 (nibble bajo de `GS ! n`). Estira la
+   * línea hacia abajo sin quitarle columnas: es lo que hace «Alta». Ausente =
+   * igual que `escala`, que es como se dibujaba antes de que existiera.
+   */
+  alto?: number;
+  /**
+   * Fuente de la impresora (`ESC M n`). La B es más estrecha: entran 4/3 de
+   * columnas (42 en 58mm, 64 en 80mm), y por eso el ancho útil de una línea B
+   * NO es el del papel a cuerpo normal. Ausente = A.
+   */
+  fuente?: "A" | "B";
 }
 
 /**
@@ -76,10 +88,17 @@ export function parseEscPos(bytes: Uint8Array): PreviewLine[] {
   let buf = "";
   let sangria = 0;
   let escala = 1;
+  let alto = 1;
+  let fuente: "A" | "B" = "A";
   let negrita = false;
 
   /** Estilo con el que se escribió el texto de la línea en curso. */
-  let estiloLinea: { escala: number; negrita: boolean } | null = null;
+  let estiloLinea: {
+    escala: number;
+    alto: number;
+    fuente: "A" | "B";
+    negrita: boolean;
+  } | null = null;
 
   const empujar = () => {
     lineas.push({
@@ -87,6 +106,8 @@ export function parseEscPos(bytes: Uint8Array): PreviewLine[] {
       texto: buf,
       escala: estiloLinea?.escala ?? escala,
       negrita: estiloLinea?.negrita ?? negrita,
+      alto: estiloLinea?.alto ?? alto,
+      fuente: estiloLinea?.fuente ?? fuente,
     });
     buf = "";
     sangria = 0;
@@ -104,7 +125,13 @@ export function parseEscPos(bytes: Uint8Array): PreviewLine[] {
       if (c === GS && cmd === "!") {
         // GS ! n — nibble alto = ancho-1, bajo = alto-1. El ancho es el que
         // decide cuántas columnas ocupa cada carácter.
-        escala = (s.charCodeAt(i + 2) >> 4) + 1;
+        const n = s.charCodeAt(i + 2);
+        escala = ((n >> 4) & 0x0f) + 1;
+        alto = (n & 0x0f) + 1;
+      } else if (c === ESC && cmd === "M") {
+        // ESC M n — fuente. La libreria manda 0/1; algunos firmwares usan ASCII.
+        const n = s.charCodeAt(i + 2);
+        fuente = n === 1 || n === 49 ? "B" : "A";
       } else if (c === ESC && cmd === "E") {
         negrita = s.charCodeAt(i + 2) === 1;
       }
@@ -137,7 +164,7 @@ export function parseEscPos(bytes: Uint8Array): PreviewLine[] {
     // El estilo se congela con el primer carácter imprimible: para cuando llega
     // el salto de línea, el encoder ya lo ha restablecido.
     if (estiloLinea === null) {
-      estiloLinea = { escala, negrita };
+      estiloLinea = { escala, negrita, alto, fuente };
     }
     buf += c;
   }

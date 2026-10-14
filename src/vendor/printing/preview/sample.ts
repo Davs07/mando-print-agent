@@ -71,6 +71,12 @@ export const BRANDING_DE_MUESTRA: TicketBranding = {
  * Con diferencia NEGATIVA a propósito: es el caso que el dueño mira de verdad
  * —falta plata en el cajón— y el que conviene ver bien maquetado antes de que
  * pase en serio.
+ *
+ * Los números son coherentes con lo que la API entrega: `totalIncome` incluye
+ * las ventas en efectivo (`cashSales`) más lo metido a mano, y
+ * `expectedAmount` = inicial + ventas en efectivo + ingresos a mano − egresos
+ * a mano. Si no cuadraran, la cuenta impresa tendría que inventar una fila de
+ * «Ajustes» para sumar.
  */
 export const CIERRE_DE_MUESTRA: CashCloseData = {
   cashBoxName: "Caja principal",
@@ -85,14 +91,40 @@ export const CIERRE_DE_MUESTRA: CashCloseData = {
     { label: "Tarjeta", total: 180 },
   ],
   totalSales: 1130,
-  totalIncome: 0,
+  cashSales: 640,
+  manualIncome: 20,
+  manualExpense: 45,
+  totalIncome: 660,
   totalExpense: 45,
+  movements: [
+    {
+      type: "INCOME",
+      description: "Propina compartida",
+      category: "Propinas",
+      amount: 20,
+      at: "2026-08-28T01:10:00.000Z",
+    },
+    {
+      type: "EXPENSE",
+      description: "Hielo",
+      category: "Insumos",
+      amount: 15,
+      at: "2026-08-27T22:05:00.000Z",
+    },
+    {
+      type: "EXPENSE",
+      description: "Balon de gas",
+      category: "Servicios",
+      amount: 30,
+      at: "2026-08-27T23:30:00.000Z",
+    },
+  ],
   orders: [
     { code: "20260827-012", table: "Mesa 3", total: 74 },
     { code: "20260827-013", table: "Mesa 1", total: 122 },
     { code: "20260827-014", table: "Mesa 6", total: 138 },
   ],
-  expectedAmount: 695,
-  countedAmount: 690,
+  expectedAmount: 715,
+  countedAmount: 710,
   difference: -5,
 };
