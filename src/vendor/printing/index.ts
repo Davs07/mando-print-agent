@@ -35,6 +35,29 @@ export {
   type ReceiptTicketOptions,
 } from "./escpos/receipt";
 export {
+  encodeElectronicDocumentTicket,
+  type ElectronicDocumentTicketOptions,
+} from "./escpos/electronic";
+export {
+  amountToWords,
+  correlativoDe,
+  numeroFiscal,
+  tieneNumeroFiscal,
+  tipoDeComprobante,
+  TIPOS_DE_COMPROBANTE,
+  etiquetaDeTipoDocumento,
+  esDocumentoAnonimo,
+  contenidoQrSunat,
+} from "./fiscal";
+export {
+  modulosDeQr,
+  tamanoDeModuloQr,
+  ladoDeQrEnMm,
+  MODULO_DE_QR,
+  QR_MINIMO_MM,
+  PUNTOS_POR_MM,
+} from "./escpos/qr";
+export {
   encodeCashCloseTicket,
   type CashCloseData,
   type CashCloseLine,
@@ -57,5 +80,6 @@ export {
 export {
   PEDIDO_DE_MUESTRA,
   BRANDING_DE_MUESTRA,
+  BRANDING_FISCAL_DE_MUESTRA,
   CIERRE_DE_MUESTRA,
 } from "./preview/sample";

@@ -72,6 +72,9 @@ export function plantillaDesdeFormato(
    * editor un papel que ya no sale.
    */
   if (kind === "cierre") return plantillaPorDefecto("cierre");
+  // La boleta y la factura no tuvieron nunca un «Formato avanzado» que traducir:
+  // su único diseño anterior era una hoja HTML, y esa ya es la de fábrica.
+  if (kind === "electronico") return plantillaPorDefecto("electronico");
 
   const b = branding ?? {};
   const porDefecto = kind === "comanda" ? DEFAULT_KITCHEN_FORMAT : DEFAULT_RECEIPT_FORMAT;

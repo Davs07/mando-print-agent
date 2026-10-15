@@ -1,6 +1,7 @@
 import type { PaperWidth } from "../types";
 import { columnasDe } from "../types";
 import type { PreviewLine } from "./parse";
+import { modulosDeQr } from "../escpos/qr";
 
 /**
  * Dibuja en HTML las líneas que salieron del encoder.
@@ -30,15 +31,33 @@ import type { PreviewLine } from "./parse";
  * - La fuente B es más estrecha: 9 de los 12 puntos de la A. Entran 4/3 de
  *   columnas, y se dibuja a 3/4 del cuerpo.
  *
+ * - El QR se dibuja con el tamaño que tendría en papel: `módulos × módulo ÷ 12`
+ *   columnas (una columna A son 12 puntos). Y es la única línea que se alinea
+ *   con CSS, porque es la única cuya alineación viaja como comando (`ESC a`)
+ *   y no como relleno.
+ *
  * CONTRATO con el editor: cada `PreviewLine` es EXACTAMENTE un elemento hijo
  * directo del resultado, en orden, y lleva `data-linea="<índice>"`. Es lo que
- * deja seleccionar un bloque tocando su línea (ver `bloquePorLinea`).
+ * deja seleccionar un bloque tocando su línea (ver `bloquePorLinea`). La línea
+ * de un QR cumple lo mismo: un solo `div` con su `data-linea`.
  */
 
 export interface RenderHtmlOptions {
   paperWidth?: PaperWidth;
   /** Cuerpo base en píxeles. El resto se multiplica por la escala de cada línea. */
   fontSizePx?: number;
+  /**
+   * Cómo dibujar un QR: recibe su CONTENIDO y devuelve HTML (un `<svg>`, un
+   * `<img>`…). El paquete no trae librería de QR a propósito —no tiene
+   * dependencias salvo el encoder, y el agente de impresión lo copia—, así que
+   * el panel pasa la suya. Sin esta función se dibuja un recuadro con «QR» del
+   * tamaño que tendrá en papel.
+   *
+   * El HTML que devuelva va dentro de una caja de ese tamaño, y un `svg`, `img`
+   * o `canvas` hijo se estira a llenarla. Debe venir ya escapado: se inserta tal
+   * cual.
+   */
+  dibujarQr?: (contenido: string) => string;
 }
 
 const escapar = (s: string) =>
@@ -47,6 +66,23 @@ const escapar = (s: string) =>
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+
+/** La línea de un QR: una caja del tamaño del papel, alineada como el comando. */
+function renderQr(l: PreviewLine, i: number, options: RenderHtmlOptions): string {
+  // Una columna de la fuente A son 12 puntos; el lado en puntos es módulos × módulo.
+  const lado = Math.round(((modulosDeQr(l.qr ?? "") * (l.qrModulo ?? 6)) / 12) * 100) / 100;
+  const alinea =
+    l.qrAlineacion === "center" ? "center" : l.qrAlineacion === "right" ? "right" : "left";
+  let dentro: string;
+  try {
+    dentro = options.dibujarQr ? options.dibujarQr(l.qr ?? "") : "";
+  } catch {
+    // Un dibujante de QR roto no puede dejar la vista previa sin ticket.
+    dentro = "";
+  }
+  const interior = dentro || '<span class="mp-qr-vacio">QR</span>';
+  return `<div class="mp-ln mp-qr" data-linea="${i}" style="text-align:${alinea}"><span class="mp-qr-caja" style="width:${lado}ch;height:${lado}ch">${interior}</span></div>`;
+}
 
 /** El cuerpo del ticket: solo las líneas, sin envoltorio ni estilos de página. */
 export function renderTicketLinesHtml(
@@ -57,6 +93,8 @@ export function renderTicketLinesHtml(
 
   return lineas
     .map((l, i) => {
+      if (l.qr !== undefined) return renderQr(l, i, options);
+
       if (l.texto.trim().length === 0) {
         return `<div class="mp-sp" data-linea="${i}"></div>`;
       }
@@ -110,6 +148,15 @@ export function ticketCss(options: RenderHtmlOptions = {}): string {
 }
 .mp-margen { display: inline-block; }
 .mp-sp { height: .62em; }
+.mp-qr { line-height: 0; padding: .3em 0; }
+.mp-qr-caja { display: inline-block; vertical-align: top; box-sizing: border-box; }
+.mp-qr-caja > svg, .mp-qr-caja > img, .mp-qr-caja > canvas {
+  display: block; width: 100%; height: 100%; image-rendering: pixelated;
+}
+.mp-qr-vacio {
+  display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;
+  box-sizing: border-box; border: 2px solid #000; font-weight: 700; line-height: 1;
+}
 `.trim();
 }
 

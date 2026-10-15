@@ -14,7 +14,7 @@
 import type { CashCloseData, CashCloseMovement } from "../escpos/cash-close";
 import { CIERRE_DE_MUESTRA } from "../preview/sample";
 import type { TicketOrder } from "../types";
-import type { DatosDocumento, DocumentKind } from "./tipos";
+import type { DatosDocumento, DatosFiscales, DocumentKind } from "./tipos";
 
 export interface MuestraDeDocumento {
   id: string;
@@ -222,6 +222,150 @@ const deDocumento = (kind: "comanda" | "precuenta" | "comprobante") =>
     }),
   );
 
+// ─── Boletas y facturas ─────────────────────────────────────────────────────
+
+const HASH_DE_MUESTRA = "Qm1s0Zs7VZ3v5q9Yk2rXc8PdE4A=";
+
+/**
+ * Lo fiscal de una muestra. Los importes cuadran: la base más el IGV es el
+ * total, y el QR lleva los mismos números que el papel, porque en uno de verdad
+ * SUNAT compara el QR contra lo impreso.
+ */
+function fiscal(
+  base: Pick<DatosFiscales, "tipoDoc" | "serie" | "correlativo" | "fechaEmision" | "total"> &
+    Partial<DatosFiscales>,
+  cuerpoDelQr: string,
+): DatosFiscales {
+  return {
+    formaPago: "Efectivo",
+    hash: HASH_DE_MUESTRA,
+    estado: "Aceptada por SUNAT",
+    qr: `20123456789|${base.tipoDoc}|${base.serie}|${String(base.correlativo).padStart(8, "0")}|${cuerpoDelQr}`,
+    ...base,
+  };
+}
+
+const ELECTRONICAS: MuestraDeDocumento[] = [
+  {
+    id: "boleta",
+    nombre: "Boleta con cliente",
+    datos: {
+      kind: "electronico",
+      pedido: ENMESA,
+      // Correlativo sin completar y con hora: ejercita los dos arreglos de SUNAT.
+      fiscal: fiscal(
+        {
+          tipoDoc: "03",
+          serie: "B001",
+          correlativo: 15,
+          fechaEmision: "2026-10-08T00:45:00.000Z",
+          cliente: { tipoDoc: "DNI", numDoc: "45123678", nombre: "Maria Fernanda Quispe Huaman" },
+          opGravada: 106.78,
+          igv: 19.22,
+          total: 126,
+        },
+        "19.22|126.00|2026-10-07|1|45123678|",
+      ),
+    },
+  },
+  {
+    id: "anonima",
+    nombre: "Boleta sin cliente",
+    datos: {
+      kind: "electronico",
+      pedido: PARA_LLEVAR,
+      fiscal: fiscal(
+        {
+          tipoDoc: "03",
+          serie: "B001",
+          correlativo: "00000016",
+          // Un día suelto: no debe correrse a la víspera por la zona horaria.
+          fechaEmision: "2026-10-08",
+          // El «DNI» que se manda cuando no hay comprador.
+          cliente: { tipoDoc: "1", numDoc: "00000000" },
+          opGravada: "521.19",
+          igv: "93.81",
+          total: "615.00",
+          formaPago: "Yape / Plin",
+        },
+        "93.81|615.00|2026-10-08|0|00000000|",
+      ),
+    },
+  },
+  {
+    id: "factura",
+    nombre: "Factura con RUC y dirección",
+    datos: {
+      kind: "electronico",
+      pedido: DOS_RONDAS,
+      fiscal: fiscal(
+        {
+          tipoDoc: "01",
+          serie: "F001",
+          correlativo: 4,
+          fechaEmision: "2026-10-08",
+          cliente: {
+            tipoDoc: "6",
+            numDoc: "20601234567",
+            nombre: "Constructora y Servicios Generales Andinos S.A.C.",
+            direccion: "Av. Evitamiento Norte 1520, Urb. Los Pinos, Cajamarca, Cajamarca",
+          },
+          opGravada: 212.71,
+          igv: 38.29,
+          total: 251,
+          formaPago: "Tarjeta",
+        },
+        "38.29|251.00|2026-10-08|6|20601234567|",
+      ),
+    },
+  },
+  {
+    id: "consumo",
+    nombre: "Boleta por consumo",
+    datos: {
+      kind: "electronico",
+      pedido: ENMESA,
+      fiscal: fiscal(
+        {
+          tipoDoc: "03",
+          serie: "B001",
+          correlativo: 18,
+          fechaEmision: "2026-10-08",
+          cliente: { tipoDoc: "DNI", numDoc: "45123678", nombre: "Maria Fernanda Quispe Huaman" },
+          opGravada: 106.78,
+          igv: 19.22,
+          total: 126,
+          porConsumo: true,
+        },
+        "19.22|126.00|2026-10-08|1|45123678|",
+      ),
+    },
+  },
+  {
+    id: "descuento",
+    nombre: "Boleta con descuento",
+    datos: {
+      kind: "electronico",
+      pedido: CON_NOTAS,
+      fiscal: fiscal(
+        {
+          tipoDoc: "03",
+          serie: "B001",
+          correlativo: 21,
+          fechaEmision: "2026-10-08",
+          cliente: { tipoDoc: "DNI", numDoc: "45123678", nombre: "Maria Fernanda Quispe Huaman" },
+          // La base ya viene neta del descuento, como la recibe SUNAT.
+          opGravada: 116.69,
+          descuento: 15.3,
+          igv: 21.01,
+          total: 137.7,
+        },
+        "21.01|137.70|2026-10-08|1|45123678|",
+      ),
+    },
+  },
+];
+
 // ─── Cierres ────────────────────────────────────────────────────────────────
 
 /** Los pedidos del turno, para que la lista tenga el largo de un dia real. */
@@ -333,6 +477,7 @@ export const MUESTRAS: Record<DocumentKind, MuestraDeDocumento[]> = {
   comanda: deDocumento("comanda"),
   precuenta: deDocumento("precuenta"),
   comprobante: deDocumento("comprobante"),
+  electronico: ELECTRONICAS,
   cierre: [
     { id: "falta", nombre: "Falta plata", datos: { kind: "cierre", cierre: CIERRE_DE_MUESTRA } },
     { id: "cuadra", nombre: "Cuadra", datos: { kind: "cierre", cierre: CIERRE_CUADRA } },

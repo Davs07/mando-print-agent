@@ -14,6 +14,7 @@ import {
   DEFINICIONES,
   ESQUELETOS,
   TAMANOS,
+  esObligatorio,
   opcionesDe,
 } from "./catalogo";
 import type {
@@ -98,8 +99,9 @@ function sanearBloque(
   const bloque: TemplateBlock = {
     id,
     type,
-    // El aviso legal se imprime aunque el JSON diga otra cosa.
-    visible: def.obligatorio ? true : b.visible !== false,
+    // Lo obligatorio (el aviso legal, lo que SUNAT exige en una boleta) se
+    // imprime aunque el JSON diga otra cosa.
+    visible: esObligatorio(type, kind) ? true : b.visible !== false,
   };
 
   if (typeof b.size === "string" && b.size in TAMANOS) bloque.size = b.size as BlockSize;
@@ -195,7 +197,12 @@ export function leerPlantilla(raw: unknown, kind: DocumentKind): TicketTemplate 
       }
     }
     idsVistos.add(semilla.id);
-    blocks.splice(posicion, 0, { ...semilla });
+    // Un obligatorio que faltaba vuelve visible, sea cual sea su visibilidad de
+    // fábrica: no se puede borrar un bloque para dejar de imprimirlo.
+    blocks.splice(posicion, 0, {
+      ...semilla,
+      visible: esObligatorio(semilla.type, kind) ? true : semilla.visible,
+    });
     unicos.add(semilla.type);
   });
 
@@ -221,6 +228,7 @@ export const FORMATO_DE: Record<DocumentKind, "kitchen" | "receipt"> = {
   precuenta: "receipt",
   comprobante: "receipt",
   cierre: "receipt",
+  electronico: "receipt",
 };
 
 function comoObjeto(

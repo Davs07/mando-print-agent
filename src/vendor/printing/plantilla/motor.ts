@@ -33,15 +33,25 @@ import ReceiptPrinterEncoder, {
 
 import type { CashCloseData, CashCloseMovement } from "../escpos/cash-close";
 import { escapeText, groupKitchenItems, wrapText } from "../escpos/helpers";
+import { tamanoDeModuloQr } from "../escpos/qr";
+import {
+  amountToWords,
+  esDocumentoAnonimo,
+  etiquetaDeTipoDocumento,
+  numeroFiscal,
+  tipoDeComprobante,
+  contenidoQrSunat,
+} from "../fiscal";
 import { parseEscPos } from "../preview/parse";
 import { columnasDe, type PaperWidth, type TicketBranding, type TicketItem, type TicketOrder } from "../types";
-import { DEFINICIONES, TAMANOS } from "./catalogo";
+import { DEFINICIONES, TAMANOS, esObligatorio } from "./catalogo";
 import { opcionDeBloque } from "./leer";
 import type {
   BlockAlign,
   BlockSize,
   BlockType,
   DatosDocumento,
+  DatosFiscales,
   DocumentKind,
   TemplateBlock,
   TicketTemplate,
@@ -200,6 +210,8 @@ interface Partes {
   anio: string;
   hora: string;
   minuto: string;
+  /** Era un día de calendario (`AAAA-MM-DD`), sin hora que enseñar. */
+  sinHora?: boolean;
 }
 
 /**
@@ -248,6 +260,19 @@ function partesDeFecha(valor: unknown): Partes | null {
     hora: dos(l.getUTCHours()),
     minuto: dos(l.getUTCMinutes()),
   };
+}
+
+/**
+ * La fecha de emisión de un comprobante. Un `AAAA-MM-DD` suelto es un día de
+ * calendario, no un instante: `new Date("2026-10-14")` es la medianoche UTC, o
+ * sea las 19:00 del 13 en Lima, y la boleta saldría con la fecha de la víspera.
+ */
+function partesDeFechaFiscal(valor: unknown): Partes | null {
+  if (typeof valor === "string") {
+    const m = /^\s*(\d{4})-(\d{2})-(\d{2})\s*$/.exec(valor);
+    if (m) return { anio: m[1]!, mes: m[2]!, dia: m[3]!, hora: "00", minuto: "00", sinHora: true };
+  }
+  return partesDeFecha(valor);
 }
 
 const fechaLarga = (p: Partes) => `${p.dia}/${p.mes}/${p.anio}`;
@@ -360,6 +385,37 @@ class Papel {
     this.ids.push(this.actual);
   }
 
+  /**
+   * Un código QR centrado, con `GS ( k` del encoder.
+   *
+   * Tres cosas medidas del encoder (ver `medidas.test.ts`):
+   * - centra con `ESC a 1` SOLO si antes se llamó `.align("center")`; mandar el
+   *   QR sin eso lo deja a la izquierda;
+   * - hay que devolver `.align("left")` después, o el texto siguiente se centra
+   *   con el relleno de la librería (y el nuestro lo duplicaría);
+   * - el símbolo se cierra con un salto de línea PROPIO (`0A`), y si es lo
+   *   primero del documento hay otro antes. Ambos son líneas para el parser, así
+   *   que se cuentan aquí para que `bloquePorLinea` no se corra.
+   */
+  qr(contenido: string): void {
+    if (this.abierta) this.vacia();
+    const ancho: PaperWidth = this.columnas <= columnasDe("58mm") ? "58mm" : "80mm";
+    const antes = this.ids.length === 0;
+    this.abierta = true;
+    this.enc = this.enc
+      .align("center")
+      .qrcode(contenido, {
+        model: 2,
+        size: tamanoDeModuloQr(contenido, ancho),
+        // M recupera el 15 % dañado: el papel térmico se ensucia y se dobla.
+        errorlevel: "m",
+      })
+      .align("left");
+    this.abierta = false;
+    if (antes) this.ids.push(this.actual);
+    this.ids.push(this.actual, this.actual);
+  }
+
   /** Una línea en blanco. */
   vacia(n = 1): void {
     for (let i = 0; i < n; i++) {
@@ -386,6 +442,10 @@ const NORMAL: Estilo = { ancho: 1, alto: 1, fuente: "A", bold: false };
 const POR_TIPO: Partial<Record<BlockType, { bold?: boolean; align?: BlockAlign }>> = {
   business_name: { bold: true, align: "center" },
   title: { bold: true, align: "center" },
+  fiscal_title: { bold: true, align: "center" },
+  fiscal_status: { bold: true, align: "center" },
+  fiscal_legend: { align: "center" },
+  sunat_hash: { align: "center" },
   text: { align: "center" },
   legal_notice: { bold: true, align: "center" },
   electronic_document: { align: "center" },
@@ -512,12 +572,13 @@ function mesaDe(order: TicketOrder): string {
   return String(order.tableName ?? "").replace(/^\s*Mesa\s+/i, "").trim();
 }
 
-function bloqueItems(c: Ctx, b: TemplateBlock, order: TicketOrder): void {
+function bloqueItems(c: Ctx, b: TemplateBlock, order: TicketOrder, forzada?: TicketItem[]): void {
   const est = estiloDe(c, b);
   const ef = c.papel.ancho(est);
   const esComanda = c.kind === "comanda";
   const verNotas = opcionDeBloque<boolean>(b, "showItemNotes", c.kind);
-  const lista = activos(order.items);
+  // `forzada` es la línea única de una boleta «por consumo».
+  const lista = forzada ?? activos(order.items);
 
   /** La nota de un plato, bajo él, sangrada y sin pasarse del papel. */
   const nota = (item: TicketItem) => {
@@ -731,6 +792,155 @@ function bloqueDePedido(c: Ctx, b: TemplateBlock, order: TicketOrder, documento:
     }
     default:
       return;
+  }
+}
+
+// ─── Bloques de la boleta y la factura ──────────────────────────────────────
+
+/** Más que esto no es el contenido de SUNAT (~100 bytes): es otra cosa. */
+const MAX_QR = 500;
+
+function bloqueElectronico(
+  c: Ctx,
+  b: TemplateBlock,
+  order: TicketOrder,
+  fiscal: DatosFiscales | null | undefined,
+): void {
+  // Sin datos fiscales (un llamador roto) los bloques fiscales salen vacíos en
+  // vez de lanzar uno por uno; el papel sale sin nada que SUNAT acepte, pero sale.
+  const f = fiscal && typeof fiscal === "object" ? fiscal : ({} as Partial<DatosFiscales> as DatosFiscales);
+  const dato = (valor: unknown) => {
+    const t = limpiar(valor).trim();
+    return t === "" ? null : t;
+  };
+  const tipo = tipoDeComprobante(f.tipoDoc);
+  const moneda = f.moneda === "USD" ? "USD" : "PEN";
+
+  switch (b.type) {
+    case "date": {
+      // La fecha del comprobante es la de emisión, no la del pedido.
+      const p = partesDeFechaFiscal(f.fechaEmision) ?? partesDeFecha(order.createdAt);
+      if (!p) return;
+      const formato = opcionDeBloque<string>(b, "format", c.kind);
+      const hora = opcionDeBloque<string>(b, "clock", c.kind) === "24" ? horaDe(p) : hora12De(p);
+      const t =
+        p.sinHora || formato === "date"
+          ? fechaLarga(p)
+          : formato === "time"
+            ? hora
+            : `${fechaLarga(p)} ${hora}`;
+      parrafo(c, b, conEtiqueta(b.label, t));
+      return;
+    }
+    case "items": {
+      if (!f.porConsumo) return bloqueItems(c, b, order);
+      // Lo que se mandó a SUNAT es UNA línea con la suma del detalle: la
+      // representación impresa tiene que decir lo mismo.
+      const suma = activos(order.items).reduce((s, i) => s + importeDe(i), 0);
+      return bloqueItems(c, b, order, [
+        { quantity: 1, name: "Por consumo", unitPrice: suma, subtotal: suma },
+      ]);
+    }
+    case "fiscal_title": {
+      parrafo(c, b, tipo.titulo);
+      const numero = txt(c, numeroFiscal(f.serie, f.correlativo));
+      if (!numero) return;
+      // El número nunca se parte: «B001-0000» y «0015» en dos renglones no se
+      // lee. Si no cabe al cuerpo pedido, baja al mayor que entre.
+      parrafo(c, b, numero, cuerpoQueEntra(c, estiloDe(c, b), numero));
+      return;
+    }
+    case "fiscal_customer": {
+      const cli = f.cliente ?? {};
+      const numDoc = esDocumentoAnonimo(cli.numDoc) ? null : dato(cli.numDoc);
+      const nombre = dato(cli.nombre);
+      const etiquetaDeNombre = b.label === undefined ? "Cliente" : b.label;
+      if (numDoc !== null) {
+        const etiqueta = etiquetaDeTipoDocumento(cli.tipoDoc) || "Doc.";
+        parrafo(c, b, `${etiqueta}: ${numDoc}`);
+      }
+      if (nombre !== null) {
+        parrafo(c, b, conEtiqueta(etiquetaDeNombre, nombre));
+      } else if (numDoc === null && f.tipoDoc !== "01") {
+        // Una boleta sin comprador identificado. La factura no puede existir sin él.
+        parrafo(c, b, conEtiqueta(etiquetaDeNombre, "PÚBLICO EN GENERAL"));
+      }
+      const direccion = dato(cli.direccion);
+      if (direccion !== null && opcionDeBloque<boolean>(b, "showAddress", c.kind)) {
+        parrafo(c, b, conEtiqueta("Dir.", direccion));
+      }
+      return;
+    }
+    case "fiscal_totals": {
+      const est = estiloDe(c, b);
+      const ef = c.papel.ancho(est);
+      const total = num(f.total);
+      const igv = num(f.igv);
+      const exonerada = num(f.opExonerada);
+      const inafecta = num(f.opInafecta);
+      const dado = f.opGravada !== undefined && f.opGravada !== null && f.opGravada !== "";
+      // Sin base gravada explícita, lo que queda del total tras IGV y lo no gravado.
+      const gravada = dado ? num(f.opGravada) : Math.max(0, total - igv - exonerada - inafecta);
+      const fila_ = (etiqueta: string, valor: number, negrita = false) =>
+        c.papel.linea(
+          fila(txt(c, etiqueta), dinero(c, valor), ef),
+          negrita ? { ...est, bold: true } : est,
+        );
+      if (gravada > 0) fila_("Op. Gravada", gravada);
+      if (exonerada > 0) fila_("Op. Exonerada", exonerada);
+      if (inafecta > 0) fila_("Op. Inafecta", inafecta);
+      if (num(f.descuento) > 0) fila_("Descuento", num(f.descuento));
+      const tasa = f.tasaIgv !== undefined && f.tasaIgv !== null && f.tasaIgv !== "" ? num(f.tasaIgv) : 18;
+      fila_(`I.G.V. (${tasa}%)`, igv);
+      fila_("TOTAL", total, true);
+      return;
+    }
+    case "amount_in_words": {
+      const dada = dato(f.montoEnLetras);
+      const letras = dada ?? limpiar(amountToWords(num(f.total), moneda));
+      parrafo(c, b, conEtiqueta(b.label === undefined ? "SON" : b.label, letras));
+      return;
+    }
+    case "payment_method": {
+      const pago = dato(f.formaPago);
+      if (pago !== null) parrafo(c, b, conEtiqueta(b.label === undefined ? "PAGO" : b.label, pago));
+      return;
+    }
+    case "sunat_qr": {
+      const recibido = typeof f.qr === "string" ? f.qr.trim() : "";
+      // Factpro a veces devuelve aquí la URL de la imagen, no el contenido. Un
+      // QR que codifique esa URL no lleva a SUNAT, así que en ese caso —o si no
+      // vino nada— se arma el contenido con los datos del comprobante, que es
+      // exactamente lo que el QR de SUNAT lleva dentro.
+      const contenido =
+        recibido && !/^(https?:|data:)/i.test(recibido)
+          ? recibido
+          : contenidoQrSunat(f, c.branding.businessDocument);
+      if (!contenido) {
+        // Sin RUC, serie o número no hay QR que valga: queda en `omitidos`.
+        throw new Error("sunat_qr: faltan datos para el QR (RUC del emisor, serie o número)");
+      }
+      if (contenido.length > MAX_QR) throw new Error("sunat_qr: contenido demasiado largo");
+      c.papel.qr(contenido);
+      return;
+    }
+    case "sunat_hash": {
+      const hash = dato(f.hash);
+      if (hash !== null) parrafo(c, b, conEtiqueta(b.label === undefined ? "Resumen" : b.label, hash));
+      return;
+    }
+    case "fiscal_status": {
+      const estado = dato(f.estado);
+      if (estado !== null) parrafo(c, b, conEtiqueta(b.label, estado));
+      return;
+    }
+    case "fiscal_legend": {
+      parrafo(c, b, `Representación impresa de la ${tipo.nombre}`);
+      parrafo(c, b, "Consulte en www.sunat.gob.pe");
+      return;
+    }
+    default:
+      return bloqueDePedido(c, b, order, null);
   }
 }
 
@@ -982,7 +1192,9 @@ const AVANCE: Record<DocumentKind, number> = {
   precuenta: 4,
   comprobante: 4,
   cierre: 4,
+  electronico: 4,
 };
+
 
 const esTituloDeCorte = (datos: DatosDocumento, b: TemplateBlock) =>
   datos.kind === "cierre" && datos.cierre?.esCorte === true && b.type === "title";
@@ -1004,7 +1216,10 @@ function construir(
     opciones,
     plantilla,
     simbolo:
-      (datos.kind === "cierre" ? datos.cierre?.currency : undefined) || opciones.currency || "S/",
+      (datos.kind === "cierre" ? datos.cierre?.currency : undefined) ||
+      (datos.kind === "electronico" && datos.fiscal?.moneda === "USD" ? "US$" : undefined) ||
+      opciones.currency ||
+      "S/",
     datos,
   };
 
@@ -1032,7 +1247,7 @@ function construir(
     if (!def) continue;
     // El aviso legal se imprime aunque la plantilla diga que no; el titulo de
     // un corte, igual (ver `TITULO_DE_CORTE`).
-    if (b.visible === false && !def.obligatorio && !esTituloDeCorte(datos, b)) continue;
+    if (b.visible === false && !esObligatorio(b.type, kind) && !esTituloDeCorte(datos, b)) continue;
 
     const esRegla =
       b.type === "separator" && opcionDeBloque<string>(b, "style", kind) !== "blank";
@@ -1043,6 +1258,8 @@ function construir(
     try {
       if (datos.kind === "cierre") {
         bloqueDeCierre(c, b, datos.cierre);
+      } else if (datos.kind === "electronico") {
+        bloqueElectronico(c, b, datos.pedido, datos.fiscal);
       } else {
         bloqueDePedido(c, b, datos.pedido, datos.documento);
       }

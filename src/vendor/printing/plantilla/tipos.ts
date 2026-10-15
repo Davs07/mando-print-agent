@@ -16,7 +16,13 @@ import type { CashCloseData } from "../escpos/cash-close";
 import type { TicketOrder } from "../types";
 
 /** Los documentos que se diseñan. Cada uno tiene su propia plantilla. */
-export const DOCUMENT_KINDS = ["comanda", "precuenta", "comprobante", "cierre"] as const;
+export const DOCUMENT_KINDS = [
+  "comanda",
+  "precuenta",
+  "comprobante",
+  "cierre",
+  "electronico",
+] as const;
 export type DocumentKind = (typeof DOCUMENT_KINDS)[number];
 
 /**
@@ -54,6 +60,16 @@ export type BlockType =
   | "total"
   | "electronic_document"
   | "legal_notice"
+  // Boleta y factura electrónica (SUNAT)
+  | "fiscal_title"
+  | "fiscal_customer"
+  | "fiscal_totals"
+  | "amount_in_words"
+  | "payment_method"
+  | "sunat_qr"
+  | "sunat_hash"
+  | "fiscal_status"
+  | "fiscal_legend"
   // Cierre de caja
   | "cash_box"
   | "opening"
@@ -100,6 +116,110 @@ export interface TicketTemplate {
   extraBold?: boolean;
 }
 
+/**
+ * El cliente de un comprobante electrónico. Todo es opcional: una boleta por
+ * menos de 700 soles puede emitirse sin identificar al comprador.
+ */
+export interface ClienteFiscal {
+  /**
+   * Tipo de documento. Acepta el nombre legible («DNI», «RUC», «CE», «PAS») o
+   * el código SUNAT del catálogo 06 («1», «6», «4», «7»): lo que la API guarde.
+   * Suele salir del snapshot que se guarda al emitir (`clienteTipoDoc`).
+   */
+  tipoDoc?: string | null;
+  /**
+   * Número de documento. `00000000` es el «DNI» que se manda cuando no hay
+   * cliente: el paquete lo trata como ausente y no lo imprime. Suele salir de
+   * `clienteNumDoc`.
+   */
+  numDoc?: string | null;
+  /** Nombre o razón social. Suele salir de `clienteNombre`. */
+  nombre?: string | null;
+  /** Dirección. En una factura va impresa; en una boleta casi nunca existe. */
+  direccion?: string | null;
+}
+
+/**
+ * Los datos fiscales de una boleta o factura electrónica, ya emitida.
+ *
+ * Son NEUTROS, igual que `TicketOrder`: no son el `ElectronicDocument` de
+ * `apps/web` ni la respuesta de Factpro. Cada consumidor traduce lo suyo. Los
+ * importes aceptan `string` porque los `Decimal` de Prisma llegan así en el
+ * JSON de la API; el paquete los coerciona siempre.
+ *
+ * Qué NO hace el paquete: no calcula IGV ni redondea por su cuenta. Imprime lo
+ * que la SUNAT recibió. Una representación impresa que no dice lo mismo que el
+ * comprobante enviado es un problema tributario, no de diseño.
+ */
+export interface DatosFiscales {
+  /** `"01"` factura, `"03"` boleta (catálogo 01 de SUNAT). Sale de `tipoDoc`. */
+  tipoDoc: "01" | "03";
+  /** Serie: `B001`, `F001`. Sale de `serie`. */
+  serie: string;
+  /**
+   * Correlativo. El paquete lo completa a 8 dígitos (`15` → `00000015`), como
+   * lo manda SUNAT; si ya viene completo se deja igual. Sale de `correlativo`.
+   */
+  correlativo: string | number;
+  /**
+   * Fecha de emisión. Un `AAAA-MM-DD` suelto se toma como día de calendario (no
+   * se corre a la víspera por la zona horaria); con hora, se pasa a Lima.
+   */
+  fechaEmision: string | Date;
+  /** El comprador. Sin esto, una boleta sale «PÚBLICO EN GENERAL». */
+  cliente?: ClienteFiscal | null;
+
+  /** Operaciones gravadas (base imponible), como las recibió SUNAT. */
+  opGravada?: number | string | null;
+  /** Operaciones exoneradas. Solo se imprimen si son mayores que 0. */
+  opExonerada?: number | string | null;
+  /** Operaciones inafectas. Solo se imprimen si son mayores que 0. */
+  opInafecta?: number | string | null;
+  /**
+   * Descuento global. Se imprime como dato (positivo) y NO se resta de nada: la
+   * base ya viene calculada. Solo sale si es mayor que 0.
+   */
+  descuento?: number | string | null;
+  /** IGV en importe (no la tasa). Sale de `order.tax` o del documento. */
+  igv?: number | string | null;
+  /** Tasa de IGV en porcentaje, solo para el rótulo. Por defecto 18. */
+  tasaIgv?: number | string | null;
+  /** Importe total del comprobante. */
+  total: number | string;
+
+  /**
+   * El monto en letras («QUINCE CON 00/100 SOLES»). Opcional: si no viene, el
+   * paquete lo calcula con `amountToWords`, que es la única implementación.
+   */
+  montoEnLetras?: string | null;
+  /**
+   * Moneda del comprobante. Por defecto soles. Decide el símbolo de los
+   * importes y la palabra del monto en letras.
+   */
+  moneda?: "PEN" | "USD" | null;
+  /**
+   * Cómo se pagó, ya legible («Efectivo», «Yape / Plin»). El paquete no sabe de
+   * enums de métodos de pago.
+   */
+  formaPago?: string | null;
+  /** Resumen (digest) de la firma. Sale de `sunatHash`. */
+  hash?: string | null;
+  /**
+   * El CONTENIDO del QR —la cadena de SUNAT con campos separados por `|`
+   * (`RUC|tipo|serie|correlativo|IGV|total|fecha|tipoDocCliente|numDocCliente|`)—,
+   * NO una imagen ni una URL. Sale de `sunatQr`, y ojo: Factpro a veces
+   * devuelve ahí una URL de imagen; eso no es el contenido y no se imprime.
+   */
+  qr?: string | null;
+  /** Estado ya legible: «Aceptada por SUNAT». Sin esto no se imprime estado. */
+  estado?: string | null;
+  /**
+   * Boleta «por consumo»: el detalle se condensa en una sola línea
+   * «Por consumo» con la suma, igual que se envió a SUNAT.
+   */
+  porConsumo?: boolean;
+}
+
 /** Lo que hace falta para dibujar un documento, según cuál sea. */
 export type DatosDocumento =
   | {
@@ -112,7 +232,13 @@ export type DatosDocumento =
         documentStatus?: string | null;
       } | null;
     }
-  | { kind: "cierre"; cierre: CashCloseData };
+  | { kind: "cierre"; cierre: CashCloseData }
+  | {
+      /** La boleta o factura electrónica. El RUC del emisor sale del branding. */
+      kind: "electronico";
+      pedido: TicketOrder;
+      fiscal: DatosFiscales;
+    };
 
 // ─── Catálogo: qué se le puede ofrecer al usuario ───────────────────────────
 
@@ -135,6 +261,7 @@ export type GrupoBloque =
   | "Platos"
   | "Importes"
   | "Caja"
+  | "Fiscal"
   | "Extras";
 
 export interface DefinicionBloque {
@@ -147,11 +274,16 @@ export interface DefinicionBloque {
   /** Puede haber varios, y el usuario los agrega y los quita. */
   repetible?: boolean;
   /**
-   * No se puede ocultar. Hoy solo el aviso de que la precuenta NO es
-   * comprobante de pago: entregarla como si lo fuera es un problema tributario,
-   * no de diseño.
+   * No se puede ocultar: el aviso de que la precuenta NO es comprobante de pago
+   * y lo que SUNAT exige en la representación impresa. Entregarlos de menos es
+   * un problema tributario, no de diseño.
+   *
+   * `true` = en todos los documentos donde el bloque existe; una lista = solo
+   * en esos (el RUC del emisor es opcional en una precuenta y obligatorio en
+   * una boleta). Para saber si lo es AQUÍ, usar `esObligatorio(type, kind)`:
+   * leer este campo a pelo como booleano ignora la lista.
    */
-  obligatorio?: boolean;
+  obligatorio?: boolean | readonly DocumentKind[];
   /** Qué controles tiene sentido enseñar para este bloque. */
   admite: {
     size?: boolean;

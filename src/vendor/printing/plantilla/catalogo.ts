@@ -79,6 +79,7 @@ export const DEFINICIONES: Record<BlockType, DefinicionBloque> = {
     nombre: "Nombre del negocio",
     descripcion: "El nombre con el que el negocio se presenta en el ticket.",
     grupo: "Encabezado",
+    obligatorio: ["electronico"],
     admite: TODO,
   },
   title: {
@@ -109,6 +110,8 @@ export const DEFINICIONES: Record<BlockType, DefinicionBloque> = {
     nombre: "RUC del negocio",
     descripcion: "El documento tributario del negocio. Si no hay, no sale.",
     grupo: "Negocio",
+    // En una boleta o factura es el RUC del emisor: SUNAT lo exige impreso.
+    obligatorio: ["electronico"],
     admite: { ...TODO, label: true },
   },
 
@@ -137,8 +140,9 @@ export const DEFINICIONES: Record<BlockType, DefinicionBloque> = {
   date: {
     type: "date",
     nombre: "Fecha y hora",
-    descripcion: "Cuándo se creó el pedido.",
+    descripcion: "Cuándo se creó el pedido. En la boleta y la factura, su fecha de emisión.",
     grupo: "Pedido",
+    obligatorio: ["electronico"],
     admite: { ...TODO, label: true },
     opciones: [
       {
@@ -200,6 +204,7 @@ export const DEFINICIONES: Record<BlockType, DefinicionBloque> = {
     nombre: "Platos",
     descripcion: "La lista de lo pedido, con cantidades.",
     grupo: "Platos",
+    obligatorio: ["electronico"],
     // Sin `align`: es una tabla, y alinearla a la derecha no describe nada.
     admite: { size: true, bold: true },
     opciones: [
@@ -223,7 +228,7 @@ export const DEFINICIONES: Record<BlockType, DefinicionBloque> = {
         ayuda: "Añade «c/u S/ 10.00» cuando se piden varios del mismo.",
         tipo: "boolean",
         porDefecto: false,
-        solo: ["precuenta", "comprobante"],
+        solo: ["precuenta", "comprobante", "electronico"],
       },
     ],
   },
@@ -272,6 +277,93 @@ export const DEFINICIONES: Record<BlockType, DefinicionBloque> = {
     grupo: "Importes",
     obligatorio: true,
     admite: { size: true, bold: true, align: true, text: true },
+  },
+
+  // ── Boleta y factura electrónica ──
+  fiscal_title: {
+    type: "fiscal_title",
+    nombre: "Tipo y número del comprobante",
+    descripcion:
+      "«BOLETA DE VENTA ELECTRÓNICA» o «FACTURA ELECTRÓNICA» y su serie y número (B001-00000015). Es obligatorio.",
+    grupo: "Encabezado",
+    obligatorio: ["electronico"],
+    admite: TODO,
+  },
+  fiscal_customer: {
+    type: "fiscal_customer",
+    nombre: "Cliente del comprobante",
+    descripcion:
+      "Su documento (DNI, RUC…) y su nombre. Una boleta sin cliente dice «PÚBLICO EN GENERAL». Es obligatorio.",
+    grupo: "Pedido",
+    obligatorio: ["electronico"],
+    admite: { ...TODO, label: true },
+    opciones: [
+      {
+        key: "showAddress",
+        label: "Dirección del cliente",
+        ayuda: "En una factura va impresa; en una boleta casi nunca existe.",
+        tipo: "boolean",
+        porDefecto: true,
+      },
+    ],
+  },
+  fiscal_totals: {
+    type: "fiscal_totals",
+    nombre: "Totales del comprobante",
+    descripcion:
+      "Op. gravada, exonerada e inafecta (solo si hay), descuento, IGV y TOTAL. Es obligatorio.",
+    grupo: "Importes",
+    obligatorio: ["electronico"],
+    admite: { size: true, bold: true },
+  },
+  amount_in_words: {
+    type: "amount_in_words",
+    nombre: "Monto en letras",
+    descripcion: "«SON: QUINCE CON 00/100 SOLES». SUNAT lo exige. Es obligatorio.",
+    grupo: "Importes",
+    obligatorio: ["electronico"],
+    admite: { ...TODO, label: true },
+  },
+  payment_method: {
+    type: "payment_method",
+    nombre: "Forma de pago",
+    descripcion: "Cómo se pagó: efectivo, tarjeta, Yape. Si no se sabe, no sale.",
+    grupo: "Importes",
+    admite: { ...TODO, label: true },
+  },
+  sunat_qr: {
+    type: "sunat_qr",
+    nombre: "Código QR de SUNAT",
+    descripcion:
+      "El QR con el que se consulta el comprobante, centrado y de al menos 2 cm. Es obligatorio.",
+    grupo: "Fiscal",
+    obligatorio: ["electronico"],
+    // Sin tamaño ni negrita: el QR no es texto, y su tamaño lo fija SUNAT.
+    admite: {},
+  },
+  sunat_hash: {
+    type: "sunat_hash",
+    nombre: "Resumen (hash) de la firma",
+    descripcion: "El código de resumen de la firma digital. Es obligatorio.",
+    grupo: "Fiscal",
+    obligatorio: ["electronico"],
+    admite: { ...TODO, label: true },
+  },
+  fiscal_status: {
+    type: "fiscal_status",
+    nombre: "Estado en SUNAT",
+    descripcion: "«Aceptada por SUNAT». Si el estado no se sabe, no sale.",
+    grupo: "Fiscal",
+    admite: { ...TODO, label: true },
+  },
+  fiscal_legend: {
+    type: "fiscal_legend",
+    nombre: "Leyenda de representación impresa",
+    descripcion:
+      "«Representación impresa de la boleta de venta electrónica» y «Consulte en www.sunat.gob.pe». Es obligatoria.",
+    grupo: "Fiscal",
+    obligatorio: ["electronico"],
+    admite: { size: true, bold: true, align: true },
   },
 
   // ── Cierre de caja ──
@@ -463,6 +555,28 @@ export const BLOQUES_DE: Record<DocumentKind, readonly BlockType[]> = {
   comanda: DE_PEDIDO,
   precuenta: [...DE_COBRO, "legal_notice"],
   comprobante: [...DE_COBRO, "electronic_document"],
+  electronico: [
+    "business_name",
+    "address",
+    "phone",
+    "business_document",
+    "fiscal_title",
+    "order_number",
+    "date",
+    "table_service",
+    "attendant",
+    "fiscal_customer",
+    "items",
+    "fiscal_totals",
+    "amount_in_words",
+    "payment_method",
+    "sunat_qr",
+    "sunat_hash",
+    "fiscal_status",
+    "fiscal_legend",
+    "text",
+    "separator",
+  ],
   cierre: [
     "business_name",
     "title",
@@ -564,6 +678,43 @@ export const ESQUELETOS: Record<DocumentKind, readonly Semilla[]> = {
     { type: "text", text: "Gracias por su preferencia.", align: "center" },
   ],
   /**
+   * La boleta y la factura salen SIEMPRE con plantilla, sin clásico: no hay un
+   * diseño anterior que respetar (la hoja HTML de la web era el único) y lo que
+   * lleva el papel lo manda SUNAT, no el gusto del negocio. Reproduce, en orden
+   * y contenido, esa hoja: emisor arriba, tipo y número, pedido, cliente,
+   * detalle, totales, monto en letras, pago, QR, hash, estado y leyendas.
+   */
+  electronico: [
+    { type: "business_name", size: "large", bold: true, align: "center" },
+    { type: "business_document", label: "R.U.C", align: "center" },
+    { type: "address", align: "center" },
+    { type: "phone", label: "Tel", align: "center" },
+    sep("dashes"),
+    { type: "fiscal_title", bold: true, align: "center" },
+    sep("dashes"),
+    { type: "order_number", label: "PED", align: "left" },
+    { type: "date", label: "Fecha", align: "left" },
+    { type: "table_service", align: "left" },
+    { type: "attendant", label: "Mozo", align: "left" },
+    { type: "fiscal_customer", label: "Cliente", align: "left" },
+    sep("dashes"),
+    // Con precio por unidad: es la columna P.U. de la hoja HTML. Sin notas por
+    // plato: la boleta no las llevaba, y son del cocinero, no del cliente.
+    { type: "items", options: { showUnitPrice: true, showItemNotes: false } },
+    sep("dashes"),
+    { type: "fiscal_totals" },
+    sep("dashes"),
+    { type: "amount_in_words" },
+    { type: "payment_method", label: "PAGO", bold: true },
+    sep("dashes"),
+    { type: "sunat_qr" },
+    { type: "sunat_hash", label: "Resumen", align: "center" },
+    { type: "fiscal_status", align: "center", bold: true },
+    { type: "fiscal_legend", align: "center" },
+    // Apagado: la hoja HTML solo llevaba el pie si el negocio lo configuraba.
+    { type: "text", text: "Gracias por su preferencia.", align: "center", visible: false },
+  ],
+  /**
    * El cierre es una cuenta que se lee de arriba abajo, en dos preguntas que no
    * hay que mezclar: cuánto se vendió, y si cuadra el cajón. La segunda es solo
    * de efectivo —tarjeta y Yape no pasan por el cajón— y por eso va en su
@@ -600,7 +751,22 @@ export const NOMBRE_DE_DOCUMENTO: Record<DocumentKind, string> = {
   precuenta: "Precuenta",
   comprobante: "Comprobante",
   cierre: "Cierre de caja",
+  electronico: "Boleta y factura",
 };
+
+/**
+ * ¿Este bloque no se puede ocultar EN ESTE documento?
+ *
+ * `DefinicionBloque.obligatorio` es `true` (en todos) o una lista de documentos,
+ * y leerlo a pelo como booleano trata cualquier lista como «siempre»: la fecha
+ * es obligatoria en la boleta y opcional en la comanda. Todo el que decida si un
+ * bloque se puede ocultar, mover o borrar pasa por aquí.
+ */
+export function esObligatorio(type: BlockType, kind: DocumentKind): boolean {
+  const o = DEFINICIONES[type]?.obligatorio;
+  if (o === true) return true;
+  return typeof o === "object" && o !== null && o.includes(kind);
+}
 
 /** Las opciones de un bloque que aplican en ESTE documento. */
 export function opcionesDe(type: BlockType, kind: DocumentKind) {

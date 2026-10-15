@@ -51,6 +51,20 @@ export interface PreviewLine {
    * NO es el del papel a cuerpo normal. Ausente = A.
    */
   fuente?: "A" | "B";
+  /**
+   * Esta línea es un código QR (`GS ( k`), y esto es su CONTENIDO guardado, no
+   * una imagen: la impresora lo dibuja con sus propios módulos. Quien dibuje la
+   * vista previa pone su QR o, sin librería de QR, un recuadro (ver
+   * `RenderHtmlOptions.dibujarQr`). `texto` va vacío.
+   */
+  qr?: string;
+  /** Tamaño de módulo del QR (1 a 8 puntos), de `GS ( k` función 67. */
+  qrModulo?: number;
+  /**
+   * Alineación del QR, de `ESC a`. Es la única alineación que SÍ viaja como
+   * comando: un símbolo no se puede centrar rellenando con espacios.
+   */
+  qrAlineacion?: "left" | "center" | "right";
 }
 
 /**
@@ -91,6 +105,10 @@ export function parseEscPos(bytes: Uint8Array): PreviewLine[] {
   let alto = 1;
   let fuente: "A" | "B" = "A";
   let negrita = false;
+  let alineacion: "left" | "center" | "right" = "left";
+  /** Lo que el QR en curso lleva guardado, a la espera de la orden de imprimir. */
+  let qrDatos = "";
+  let qrModulo = 6;
 
   /** Estilo con el que se escribió el texto de la línea en curso. */
   let estiloLinea: {
@@ -122,6 +140,46 @@ export function parseEscPos(bytes: Uint8Array): PreviewLine[] {
       const cmd = s[i + 1] ?? "";
       const tabla = c === ESC ? ARGS_ESC : c === GS ? ARGS_GS : ARGS_FS;
 
+      if (c === GS && cmd === "(") {
+        // GS ( <letra> pL pH <pL + 256·pH bytes>. La letra es la familia
+        // (`k` = códigos 2D; `L`, gráficos; `A`, autoprueba…), y todas llevan la
+        // longitud, así que se saltan enteras aunque no se interpreten.
+        const familia = s[i + 2] ?? "";
+        const largo = s.charCodeAt(i + 3) + 256 * s.charCodeAt(i + 4);
+        const ini = i + 5;
+        if (familia === "k") {
+          const cn = s.charCodeAt(ini);
+          const fn = s.charCodeAt(ini + 1);
+          if (cn === 0x31) {
+            if (fn === 0x50) {
+              // Guardar datos: cn fn m d1…dk.
+              qrDatos = s.slice(ini + 3, ini + largo);
+            } else if (fn === 0x43) {
+              qrModulo = s.charCodeAt(ini + 2);
+            } else if (fn === 0x51) {
+              // Imprimir el símbolo. Si había texto a medias, sale antes.
+              if (buf.trim()) empujar();
+              lineas.push({
+                sangria: 0,
+                texto: "",
+                escala: 1,
+                negrita: false,
+                alto: 1,
+                fuente: "A",
+                qr: qrDatos,
+                qrModulo,
+                qrAlineacion: alineacion,
+              });
+              buf = "";
+              sangria = 0;
+              estiloLinea = null;
+            }
+          }
+        }
+        i += 4 + largo;
+        continue;
+      }
+
       if (c === GS && cmd === "!") {
         // GS ! n — nibble alto = ancho-1, bajo = alto-1. El ancho es el que
         // decide cuántas columnas ocupa cada carácter.
@@ -134,6 +192,11 @@ export function parseEscPos(bytes: Uint8Array): PreviewLine[] {
         fuente = n === 1 || n === 49 ? "B" : "A";
       } else if (c === ESC && cmd === "E") {
         negrita = s.charCodeAt(i + 2) === 1;
+      } else if (c === ESC && cmd === "a") {
+        // ESC a n — el encoder solo la emite alrededor de un QR. 0/1/2, o el
+        // ASCII '0'/'1'/'2' que usan algunos firmwares.
+        const n = s.charCodeAt(i + 2) & 0x03;
+        alineacion = n === 1 ? "center" : n === 2 ? "right" : "left";
       }
 
       // Desconocido: se asume 1 argumento. Pasarse por uno se come un carácter;

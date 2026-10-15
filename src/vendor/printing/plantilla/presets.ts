@@ -106,6 +106,34 @@ export const PRESETS: Record<DocumentKind, PresetDePlantilla[]> = {
   ],
   precuenta: DE_COBRO("precuenta"),
   comprobante: DE_COBRO("comprobante"),
+  // Solo se ofrecen cambios a la vista: lo que SUNAT exige (tipo y número, RUC,
+  // cliente, totales, monto en letras, QR, hash y leyenda) no se quita en ninguno.
+  electronico: [
+    fabrica(
+      "electronico",
+      "Clásica",
+      "El de siempre: emisor, tipo y número, cliente, detalle con precio por unidad, totales, QR y leyendas.",
+    ),
+    {
+      id: "compacta",
+      nombre: "Compacta",
+      descripcion:
+        "Sin dirección, teléfono, número de pedido ni mozo, y el detalle sin precio por unidad. Gasta menos papel.",
+      plantilla: variante("electronico", {
+        address: { visible: false },
+        phone: { visible: false },
+        order_number: { visible: false },
+        attendant: { visible: false },
+        items: { options: { showUnitPrice: false } },
+      }),
+    },
+    {
+      id: "con-agradecimiento",
+      nombre: "Con agradecimiento",
+      descripcion: "El de siempre, con «Gracias por su preferencia.» al final.",
+      plantilla: variante("electronico", { text: { visible: true } }),
+    },
+  ],
   cierre: [
     fabrica(
       "cierre",

@@ -66,6 +66,19 @@ export const BRANDING_DE_MUESTRA: TicketBranding = {
 };
 
 /**
+ * El branding de muestra de una boleta o factura: con RUC, dirección y teléfono,
+ * que el de arriba no tiene a propósito (sus tests fijan los tickets sin ellos).
+ * El RUC es obligatorio en la representación impresa, así que la vista previa de
+ * este documento no tiene sentido sin uno.
+ */
+export const BRANDING_FISCAL_DE_MUESTRA: TicketBranding = {
+  ...BRANDING_DE_MUESTRA,
+  businessDocument: "20123456789",
+  businessAddress: "Jr. Amalia Puga 421, Cajamarca",
+  businessPhone: "976 543 210",
+};
+
+/**
  * El cierre de caja de muestra.
  *
  * Con diferencia NEGATIVA a propósito: es el caso que el dueño mira de verdad
