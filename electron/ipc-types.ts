@@ -8,7 +8,12 @@ export interface AgentStatusEvent {
 export interface JobEvent {
   jobId: string
   orderId: string
-  ticketType: 'RECEIPT' | 'KITCHEN'
+  /** Puede llegar un tipo que esta version no conoce: se rechaza y se muestra tal cual. */
+  ticketType: 'RECEIPT' | 'KITCHEN' | 'CASH_CLOSE' | (string & {})
+  /** Con `RECEIPT`: es una precuenta, no un comprobante. */
+  preventa?: boolean
+  /** Con `CASH_CLOSE`: `orderId` va vacio y la referencia es la caja. */
+  cashBoxId?: string
   timestamp: string
 }
 

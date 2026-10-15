@@ -1,8 +1,26 @@
 import { EventEmitter } from 'events'
 import { io, Socket } from 'socket.io-client'
-import { encodeReceiptTicket, encodeKitchenTicket } from './escpos'
+import { encodeReceiptTicket, encodeKitchenTicket, encodeCashCloseTicket } from './escpos'
 import type { PrintAgentConfig, LogLevel } from './config'
 import type { Printer } from './printer'
+import pkg from '../package.json'
+
+/**
+ * Version del agente tal como la declara `package.json`: es el mismo dato que
+ * usa electron-builder para nombrar el instalador y `app.getVersion()` para la
+ * ventana, asi que la API ve lo mismo que ve el usuario.
+ */
+export const VERSION_AGENTE: string = pkg.version
+
+/**
+ * Lo que este agente sabe imprimir ademas de comandas y comprobantes.
+ *
+ * POR QUE SE DECLARA: la API solo manda precuentas y cierres de caja a quien
+ * lo diga. Un agente viejo que recibiera una precuenta la imprimiria como
+ * comprobante, sin el aviso de que no es un comprobante de pago. Agregar una
+ * capacidad aqui sin implementarla en `handlePrintJob` seria mentirle a la API.
+ */
+export const CAPACIDADES_AGENTE = ['PREVENTA', 'CASH_CLOSE'] as const
 
 // ─── Tipos espejados del backend ──────────────────────────────────────────────
 
@@ -31,10 +49,22 @@ interface PrintJobPayload {
   jobId: string
   businessId: string
   agentId: string
+  /** Vacio (`""`) en un `CASH_CLOSE`: no hay pedido, hay una caja. */
   orderId: string
-  ticketType: 'RECEIPT' | 'KITCHEN'
+  /**
+   * `string` a proposito y no la union cerrada: lo que llega por el socket no lo
+   * controla este agente, y un tipo que no conoce debe rechazarse, no caer en la
+   * rama por defecto.
+   */
+  ticketType: 'RECEIPT' | 'KITCHEN' | 'CASH_CLOSE' | (string & {})
   paperWidth: '58mm' | '80mm'
+  /** `{}` en un `CASH_CLOSE`. */
   order: Record<string, unknown>
+  /** Solo con `RECEIPT`: sale la precuenta, no el comprobante. */
+  preventa?: boolean
+  /** Solo con `CASH_CLOSE`, con la forma de `CashCloseData`. */
+  cashClose?: Record<string, unknown>
+  cashBoxId?: string
   branding: PrintBranding
   timestamp: string
 }
@@ -43,6 +73,7 @@ interface PrintJobResultPayload {
   jobId: string
   orderId?: string
   ticketType?: string
+  cashBoxId?: string
   success: boolean
   error?: string
 }
@@ -84,7 +115,11 @@ export class PrintAgent extends EventEmitter {
        * (evento disconnect) en vez de "Error" en rojo (connect_error). Parecia
        * un problema de red o de firewall, y era de autenticacion.
        */
-      auth: { token: this.config.token },
+      auth: {
+        token: this.config.token,
+        version: VERSION_AGENTE,
+        capacidades: [...CAPACIDADES_AGENTE],
+      },
       transports: ['websocket'],
       reconnection: true,
       reconnectionDelay: 2000,
@@ -150,12 +185,19 @@ export class PrintAgent extends EventEmitter {
   // ─── Impresión ──────────────────────────────────────────────────────────────
 
   private async handlePrintJob(payload: PrintJobPayload): Promise<void> {
-    const { jobId, ticketType, paperWidth, order, branding, orderId } = payload
+    const { jobId, ticketType, paperWidth, order, branding, orderId, preventa, cashClose, cashBoxId } = payload
     this.log(
       'info',
-      `Job recibido: ${jobId} | tipo: ${ticketType} | papel: ${paperWidth}`,
+      `Job recibido: ${jobId} | tipo: ${ticketType}${preventa ? ' (precuenta)' : ''} | papel: ${paperWidth}`,
     )
-    this.emit('job', { jobId, orderId, ticketType, timestamp: payload.timestamp })
+    this.emit('job', {
+      jobId,
+      orderId,
+      ticketType,
+      timestamp: payload.timestamp,
+      ...(preventa ? { preventa: true } : {}),
+      ...(cashBoxId ? { cashBoxId } : {}),
+    })
 
     let success = false
     let error: string | undefined
@@ -163,10 +205,25 @@ export class PrintAgent extends EventEmitter {
     try {
       const effectivePaperWidth = paperWidth ?? this.config.paperWidth
 
-      const bytes =
-        ticketType === 'RECEIPT'
-          ? encodeReceiptTicket(order, effectivePaperWidth, branding)
-          : encodeKitchenTicket(order, effectivePaperWidth, branding)
+      let bytes: Uint8Array
+      switch (ticketType) {
+        case 'RECEIPT':
+          bytes = encodeReceiptTicket(order, effectivePaperWidth, branding, { preventa })
+          break
+        case 'KITCHEN':
+          bytes = encodeKitchenTicket(order, effectivePaperWidth, branding)
+          break
+        case 'CASH_CLOSE':
+          if (!cashClose || typeof cashClose !== 'object') {
+            throw new Error('El cierre de caja llego sin datos (cashClose)')
+          }
+          bytes = encodeCashCloseTicket(cashClose, effectivePaperWidth, branding)
+          break
+        default:
+          // Nunca caer en la comanda: imprimir en cocina un documento que el
+          // agente no entiende es peor que no imprimir, y la API ve el error.
+          throw new Error(`Tipo de ticket desconocido: ${String(ticketType)}`)
+      }
 
       await this.printer.print(bytes)
       success = true
@@ -180,6 +237,7 @@ export class PrintAgent extends EventEmitter {
       jobId,
       orderId,
       ticketType,
+      ...(cashBoxId ? { cashBoxId } : {}),
       success,
       ...(error ? { error } : {}),
     }

@@ -7,8 +7,10 @@
 const ReceiptPrinterEncoder = require('@point-of-sale/receipt-printer-encoder')
 
 import {
+  encodeCashCloseTicket as encodeCashCloseTicketShared,
   encodeKitchenTicket as encodeKitchenTicketShared,
   encodeReceiptTicket as encodeReceiptTicketShared,
+  type CashCloseData,
   type TicketOrder,
 } from './vendor/printing'
 
@@ -97,8 +99,36 @@ export function encodeReceiptTicket(
   order: Record<string, unknown>,
   paperWidth: PaperWidth,
   branding: PrintBranding,
+  opciones: { preventa?: boolean } = {},
 ): Uint8Array {
   return encodeReceiptTicketShared(aTicketOrder(order), branding, {
+    paperWidth,
+    format: branding.receiptFormatConfig,
+    // La precuenta usa el mismo diseno que el comprobante pero sale con su aviso
+    // de que no es comprobante de pago. Sin este paso, el cliente se podria
+    // llevar una precuenta creyendo que es su comprobante.
+    preventa: opciones.preventa === true,
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Cierre y corte de caja (CASH_CLOSE)
+// ---------------------------------------------------------------------------
+
+/**
+ * Cierre (o corte) de caja.
+ *
+ * Lo arma la API con la forma de `CashCloseData` y se dibuja con el MISMO
+ * paquete y el mismo formato del comprobante (`receiptFormatConfig`) que usa el
+ * panel al imprimir desde el navegador: el negocio disena una sola plantilla y
+ * tiene que salir igual por la web y por el agente.
+ */
+export function encodeCashCloseTicket(
+  cashClose: Record<string, unknown>,
+  paperWidth: PaperWidth,
+  branding: PrintBranding,
+): Uint8Array {
+  return encodeCashCloseTicketShared(cashClose as unknown as CashCloseData, branding, {
     paperWidth,
     format: branding.receiptFormatConfig,
   })

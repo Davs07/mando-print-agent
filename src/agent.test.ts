@@ -142,7 +142,7 @@ describe('PrintAgent', () => {
       'http://localhost:3001/print-agent',
       expect.objectContaining({
         // En `auth`, no en `query`: es lo unico que el gateway del backend lee.
-        auth: { token: 'mpag_test' },
+        auth: expect.objectContaining({ token: 'mpag_test' }),
         transports: ['websocket'],
       }),
     )
@@ -229,7 +229,27 @@ describe('handshake con el backend', () => {
     agent.connect()
 
     const opciones = (io as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1]
-    expect(opciones.auth).toEqual({ token: 'mpag_test' })
+    expect(opciones.auth).toEqual(expect.objectContaining({ token: 'mpag_test' }))
+  })
+
+  /**
+   * La API solo manda precuentas y cierres de caja a quien declara PREVENTA y
+   * CASH_CLOSE: un agente viejo imprimiria una precuenta como comprobante, sin
+   * el aviso de que no es un comprobante de pago.
+   */
+  it('lleva la version de package.json y las capacidades junto al token', async () => {
+    const { io } = await import('socket.io-client')
+    ;(io as unknown as ReturnType<typeof vi.fn>).mockClear()
+
+    new PrintAgent(baseConfig, makePrinter()).connect()
+
+    const { version } = await import('../package.json')
+    const opciones = (io as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1]
+    expect(opciones.auth).toEqual({
+      token: 'mpag_test',
+      version,
+      capacidades: ['PREVENTA', 'CASH_CLOSE'],
+    })
   })
 
   it('no lo manda en query, donde el backend nunca lo mira', async () => {
