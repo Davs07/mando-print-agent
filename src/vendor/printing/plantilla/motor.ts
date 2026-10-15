@@ -759,6 +759,16 @@ function cuentaDelCajon(d: CashCloseData) {
   return { inicial, ventas, ingresos, egresos, suma, debeHaber, ajuste };
 }
 
+/**
+ * El titulo de un corte NO es del diseno: sale siempre, con el tamano, la
+ * negrita y la alineacion que el negocio le dio al bloque `title`, pero con
+ * este texto. Es como el aviso legal de la precuenta: un corte que se lea como
+ * cierre se archiva como el cuadre del dia, y esa confusion no se deja a lo que
+ * alguien haya escrito (o borrado) en el editor.
+ */
+const TITULO_DE_CORTE = "CORTE DE CAJA";
+const AVISO_DE_CORTE = "Caja abierta";
+
 function bloqueDeCierre(c: Ctx, b: TemplateBlock, d: CashCloseData): void {
   const { branding } = c;
   const dato = (valor: unknown) => {
@@ -780,6 +790,14 @@ function bloqueDeCierre(c: Ctx, b: TemplateBlock, d: CashCloseData): void {
       return;
     }
     case "title":
+      if (d.esCorte) {
+        // El texto guardado se ignora: ver `TITULO_DE_CORTE`.
+        parrafo(c, b, TITULO_DE_CORTE);
+        parrafo(c, b, AVISO_DE_CORTE, estiloDe(c, b, { size: "normal", bold: false }));
+        return;
+      }
+      if (b.text && b.text.trim()) parrafo(c, b, b.text);
+      return;
     case "text":
       if (b.text && b.text.trim()) parrafo(c, b, b.text);
       return;
@@ -797,6 +815,14 @@ function bloqueDeCierre(c: Ctx, b: TemplateBlock, d: CashCloseData): void {
     case "opening":
     case "closing": {
       const abre = b.type === "opening";
+      if (!abre && d.esCorte) {
+        // Un corte no tiene hora de cierre ni quien cierre: lo que lleva es la
+        // hora en que se saco el papel. Se ignora la etiqueta guardada
+        // («Cierra») porque seguiria diciendo que la caja se cerro.
+        const pc = partesDeFecha(c.opciones.printedAt ?? new Date());
+        if (pc) c.papel.linea(txt(c, `Corte ${fechaCorta(pc)} ${horaDe(pc)}`), est);
+        return;
+      }
       const p = partesDeFecha(abre ? d.openedAt : d.closedAt);
       const quien = dato(abre ? d.openedByName : d.closedByName);
       if (!p && quien === null) return;
@@ -889,13 +915,20 @@ function bloqueDeCierre(c: Ctx, b: TemplateBlock, d: CashCloseData): void {
         else c.papel.linea(fila(txt(c, "Ajustes"), dinero(c, cu.ajuste), ef), est);
       }
       regla(c, "-");
-      c.papel.linea(fila(txt(c, "Debe haber"), dinero(c, cu.debeHaber), ef), { ...est, bold: true });
-      if (d.countedAmount !== undefined && d.countedAmount !== null) {
+      // En un corte la caja sigue abierta: «Debe haber» a secas se leeria como
+      // el cuadre final, y lo que dice es lo que hay en este momento.
+      const debeHaber = d.esCorte ? "Debe haber ahora" : "Debe haber";
+      c.papel.linea(fila(txt(c, debeHaber), dinero(c, cu.debeHaber), ef), { ...est, bold: true });
+      // Un corte no cuenta el cajon: aunque llegue un `countedAmount`, no se imprime.
+      if (!d.esCorte && d.countedAmount !== undefined && d.countedAmount !== null) {
         c.papel.linea(fila(txt(c, "Contado"), dinero(c, d.countedAmount), ef), est);
       }
       return;
     }
     case "result": {
+      // Sin arqueo no hay resultado, y un corte no lo tiene aunque traiga
+      // un monto contado suelto: un «CUADRA» en un corte se archivaria como cierre.
+      if (d.esCorte) return;
       if (d.countedAmount === undefined || d.countedAmount === null) return;
       const cu = cuentaDelCajon(d);
       const dif = num(d.countedAmount) - cu.debeHaber;
@@ -951,6 +984,9 @@ const AVANCE: Record<DocumentKind, number> = {
   cierre: 4,
 };
 
+const esTituloDeCorte = (datos: DatosDocumento, b: TemplateBlock) =>
+  datos.kind === "cierre" && datos.cierre?.esCorte === true && b.type === "title";
+
 function construir(
   datos: DatosDocumento,
   branding: TicketBranding,
@@ -981,12 +1017,22 @@ function construir(
    * pegadas que parecían un error de impresión.
    */
   let acabaDeSalirUnaRegla = false;
-  for (const b of bloques) {
+  // Una plantilla sin bloque `title` (borrado en el editor) tampoco puede dejar
+  // el corte sin su nombre: se pone uno al principio, con el estilo de fabrica.
+  const sinTituloDeCorte =
+    datos.kind === "cierre" &&
+    datos.cierre?.esCorte === true &&
+    !bloques.some((b) => b && b.type === "title");
+  const lista: TemplateBlock[] = sinTituloDeCorte
+    ? [{ id: "title", type: "title", visible: true, bold: true, align: "center" }, ...bloques]
+    : bloques;
+  for (const b of lista) {
     if (!b || typeof b !== "object") continue;
     const def = DEFINICIONES[b.type];
     if (!def) continue;
-    // El aviso legal se imprime aunque la plantilla diga que no.
-    if (b.visible === false && !def.obligatorio) continue;
+    // El aviso legal se imprime aunque la plantilla diga que no; el titulo de
+    // un corte, igual (ver `TITULO_DE_CORTE`).
+    if (b.visible === false && !def.obligatorio && !esTituloDeCorte(datos, b)) continue;
 
     const esRegla =
       b.type === "separator" && opcionDeBloque<string>(b, "style", kind) !== "blank";

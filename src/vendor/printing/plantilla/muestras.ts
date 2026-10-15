@@ -301,6 +301,34 @@ const CIERRE_CON_EGRESOS: CashCloseData = {
   difference: 7.5,
 };
 
+// Corte con la caja abierta: sin cerrar, sin contar y sin quien cierre.
+// 120 de caja inicial + 640 en efectivo + 25 a mano - 85 de egresos = 700.
+const CORTE_ABIERTO: CashCloseData = {
+  esCorte: true,
+  cashBoxName: "Caja principal",
+  openedByName: "Lucia",
+  openedAt: "2026-10-07T15:00:00.000Z",
+  initialAmount: 120,
+  salesByMethod: [
+    { label: "Efectivo", total: 640 },
+    { label: "Yape", total: 310 },
+    { label: "Tarjeta", total: 180 },
+  ],
+  totalSales: 1130,
+  cashSales: 640,
+  manualIncome: 25,
+  manualExpense: 85,
+  totalIncome: 665,
+  totalExpense: 85,
+  movements: [
+    { type: "EXPENSE", description: "Hielo", category: "Insumos", amount: 15, at: "2026-10-07T17:05:00.000Z" },
+    { type: "EXPENSE", description: "Pescado fresco del dia", category: "Insumos", amount: 70, at: "2026-10-07T18:45:00.000Z" },
+    { type: "INCOME", description: "Sencillo del banco", category: "Otros", amount: 25, at: "2026-10-07T16:30:00.000Z" },
+  ],
+  orders: ordenesDelTurno(12),
+  expectedAmount: 700,
+};
+
 export const MUESTRAS: Record<DocumentKind, MuestraDeDocumento[]> = {
   comanda: deDocumento("comanda"),
   precuenta: deDocumento("precuenta"),
@@ -312,6 +340,11 @@ export const MUESTRAS: Record<DocumentKind, MuestraDeDocumento[]> = {
       id: "egresos",
       nombre: "Muchos egresos",
       datos: { kind: "cierre", cierre: CIERRE_CON_EGRESOS },
+    },
+    {
+      id: "corte",
+      nombre: "Corte con la caja abierta",
+      datos: { kind: "cierre", cierre: CORTE_ABIERTO },
     },
   ],
 };

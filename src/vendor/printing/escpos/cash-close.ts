@@ -9,7 +9,7 @@ import {
   type PrintFormatConfig,
 } from "../format";
 import { columnasDe, type PaperWidth, type TicketBranding } from "../types";
-import { plantillaDeFormato } from "../plantilla/leer";
+import { plantillaDeFormato, plantillaPorDefecto } from "../plantilla/leer";
 import { encodeDocumento } from "../plantilla/motor";
 import { escapeText } from "./helpers";
 
@@ -31,6 +31,13 @@ export interface CashCloseMovement {
 }
 
 export interface CashCloseData {
+  /**
+   * La caja sigue ABIERTA: el papel es un corte, no el cierre. Sale titulado
+   * «CORTE DE CAJA», con la hora del corte en vez de la de cierre y sin arqueo
+   * (todavia no se conto nada). Que un corte pueda leerse como un cierre es el
+   * error que este campo evita: el cajero lo archivaria como el cuadre del dia.
+   */
+  esCorte?: boolean;
   cashBoxName: string;
   openedByName?: string | null;
   closedByName?: string | null;
@@ -84,6 +91,11 @@ export interface CashCloseTicketOptions {
   format?: string | PrintFormatConfig | null;
   /** Momento de impresión. Se inyecta para que los tests no dependan del reloj. */
   printedAt?: string;
+  /**
+   * Fuerza el diseño clásico. Ningún llamador real lo usa: existe para que los
+   * tests sigan fijando byte a byte el cierre de antes del editor.
+   */
+  clasico?: boolean;
 }
 
 const fechaHora = (d?: string | null) => {
@@ -121,11 +133,21 @@ export function encodeCashCloseTicket(
   options: CashCloseTicketOptions = {},
 ): Uint8Array {
   /**
-   * Si el negocio diseño este documento en el editor, MANDA su plantilla. Va
-   * aquí —y no en cada llamador— para que Bluetooth, RawBT, WiFi y el agente la
-   * obedezcan sin tocar ninguno. Sin plantilla, sigue el código de siempre.
+   * El cierre SIEMPRE sale con plantilla: la que el negocio guardó en el editor
+   * o, si nunca diseñó su cierre, la de fábrica («Con cada egreso»).
+   *
+   * Por qué el cierre no cae al clásico como la comanda o el comprobante: su
+   * clásico no lo configuró nadie —no tenía ni una opción— y su cuenta engaña
+   * («Ingresos» suma las ventas en efectivo con lo metido a mano, y el papel no
+   * cuadra con el cajón). No hay un diseño que respetar, y sí uno mejor.
+   *
+   * Va aquí, en el paquete, y no en cada llamador: el panel (Bluetooth, RawBT,
+   * WiFi, navegador) y el agente de impresión tienen que sacar el MISMO papel.
+   * Una regla así puesta solo en el panel es exactamente la copia que diverge.
    */
-  const plantilla = plantillaDeFormato(options.format, "cierre");
+  const plantilla = options.clasico
+    ? null
+    : (plantillaDeFormato(options.format, "cierre") ?? plantillaPorDefecto("cierre"));
   if (plantilla) {
     return encodeDocumento({ kind: "cierre", cierre: data }, branding, {
       paperWidth: options.paperWidth,
@@ -144,6 +166,9 @@ export function encodeCashCloseTicket(
   const cuerpoTitulo = tamanoDeSeccion(fmt, "header", DEFAULT_RECEIPT_FORMAT);
   const cuerpoTotal = tamanoDeSeccion(fmt, "total", DEFAULT_RECEIPT_FORMAT);
 
+  // Un corte nunca sale titulado «CIERRE»: ver `CashCloseData.esCorte`.
+  const tituloDe = data.esCorte ? "CORTE DE CAJA" : "CIERRE DE CAJA";
+
   const simbolo = data.currency || "S/";
   const money = (n: unknown) => `${simbolo} ${Number(n ?? 0).toFixed(2)}`;
 
@@ -154,12 +179,12 @@ export function encodeCashCloseTicket(
     .bold(eb(fmt.boldBusinessName !== false))
     .width(cuerpoTitulo)
     .height(cuerpoTitulo)
-    .text(uc(escapeText(branding.businessName || "CIERRE DE CAJA")))
+    .text(uc(escapeText(branding.businessName || tituloDe)))
     .newline()
     .width(1)
     .height(1)
     .bold(eb(fmt.boldTitle !== false))
-    .text(uc("CIERRE DE CAJA"))
+    .text(uc(tituloDe))
     .newline()
     .bold(eb())
     // El separador se emite AUN centrado, como siempre salio. Alinearlo a la
@@ -172,13 +197,20 @@ export function encodeCashCloseTicket(
   if (data.openedByName) {
     enc = enc.text(uc(escapeText(`Abrio:  ${data.openedByName}`))).newline();
   }
-  if (data.closedByName) {
+  // Un corte no tiene quien cierre: la caja sigue abierta, y su hora es la del
+  // papel, no la de un cierre que todavia no ocurrio.
+  if (data.closedByName && !data.esCorte) {
     enc = enc.text(uc(escapeText(`Cerro:  ${data.closedByName}`))).newline();
   }
+  enc = enc.text(uc(`Apertura: ${fechaHora(data.openedAt)}`)).newline();
   enc = enc
-    .text(uc(`Apertura: ${fechaHora(data.openedAt)}`))
-    .newline()
-    .text(uc(`Cierre:   ${fechaHora(data.closedAt)}`))
+    .text(
+      uc(
+        data.esCorte
+          ? `Corte:    ${fechaHora(options.printedAt ?? new Date().toISOString())}`
+          : `Cierre:   ${fechaHora(data.closedAt)}`,
+      ),
+    )
     .newline();
 
   /** Cabecera de bloque: una regla, el título en negrita y otra regla. */

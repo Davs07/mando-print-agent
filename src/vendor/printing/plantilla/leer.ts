@@ -55,7 +55,9 @@ export function plantillaPorDefecto(kind: DocumentKind): TicketTemplate {
       ...resto,
     };
   });
-  return { version: 2, blocks, uppercase: kind === "comanda" };
+  // Las dos banderas explícitas: así la de fábrica es idéntica a cómo la devuelve
+  // `leerPlantilla` tras guardarla, y comparar «¿la cambió el usuario?» no falla.
+  return { version: 2, blocks, uppercase: kind === "comanda", extraBold: false };
 }
 
 /** El valor de una opción del bloque, o el de fábrica si no la tiene guardada. */

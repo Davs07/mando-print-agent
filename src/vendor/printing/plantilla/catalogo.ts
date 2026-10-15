@@ -578,7 +578,10 @@ export const ESQUELETOS: Record<DocumentKind, readonly Semilla[]> = {
     sep("double"),
     { type: "sales_by_method", label: "VENTAS DEL TURNO" },
     sep("double"),
-    { type: "movements", visible: false },
+    // Don Cevichon eligio ver cada egreso en el papel: es lo que explica una
+    // diferencia sin tener que abrir la pantalla. Quien no lo quiera lo oculta
+    // (preset «Sin detalle de egresos»).
+    { type: "movements" },
     // Con el detalle oculto quedan dos reglas seguidas, y el motor las funde.
     sep("double"),
     { type: "cash_count", label: "EFECTIVO EN EL CAJON" },

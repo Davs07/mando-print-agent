@@ -107,12 +107,16 @@ export const PRESETS: Record<DocumentKind, PresetDePlantilla[]> = {
   precuenta: DE_COBRO("precuenta"),
   comprobante: DE_COBRO("comprobante"),
   cierre: [
-    fabrica("cierre", "La cuenta del cajón", "Ventas por método y la cuenta del cajón, con el resultado en grande."),
+    fabrica(
+      "cierre",
+      "Con cada egreso",
+      "Ventas por método, en qué se fue cada egreso y la cuenta del cajón, con el resultado en grande.",
+    ),
     {
-      id: "con-egresos",
-      nombre: "Con cada egreso",
-      descripcion: "Añade en qué se fue cada egreso: hora, motivo e importe.",
-      plantilla: variante("cierre", { movements: { visible: true } }),
+      id: "sin-egresos",
+      nombre: "Sin detalle de egresos",
+      descripcion: "Lo mismo, pero los egresos van solo en la cuenta del cajón, sin una línea por cada uno.",
+      plantilla: variante("cierre", { movements: { visible: false } }),
     },
     {
       id: "corto",
@@ -121,6 +125,8 @@ export const PRESETS: Record<DocumentKind, PresetDePlantilla[]> = {
       plantilla: variante(
         "cierre",
         {
+          // Corto es corto: sin detalle de egresos aunque el de fabrica lo traiga.
+          movements: { visible: false },
           sales_by_method: { label: "" },
           cash_count: { label: "", options: { showSigns: false } },
           orders_list: { options: { mode: "count" } },

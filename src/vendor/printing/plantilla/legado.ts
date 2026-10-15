@@ -27,7 +27,7 @@ import {
 } from "../format";
 import type { TicketBranding } from "../types";
 import { DEFINICIONES } from "./catalogo";
-import { leerPlantilla } from "./leer";
+import { leerPlantilla, plantillaPorDefecto } from "./leer";
 import type {
   BlockSize,
   BlockType,
@@ -66,6 +66,13 @@ export function plantillaDesdeFormato(
   formato: string | PrintFormatConfig | null | undefined,
   branding: TicketBranding,
 ): TicketTemplate {
+  /**
+   * El cierre arranca del de fábrica: es lo que imprime un negocio que nunca lo
+   * diseñó (ver `encodeCashCloseTicket`). Derivarlo del clásico enseñaría en el
+   * editor un papel que ya no sale.
+   */
+  if (kind === "cierre") return plantillaPorDefecto("cierre");
+
   const b = branding ?? {};
   const porDefecto = kind === "comanda" ? DEFAULT_KITCHEN_FORMAT : DEFAULT_RECEIPT_FORMAT;
   const fmt = leerFormato(formato, porDefecto);
@@ -134,37 +141,6 @@ export function plantillaDesdeFormato(
       },
     };
     for (const k of seccionesOrdenadas(fmt, DEFAULT_KITCHEN_FORMAT.sectionOrder!)) secciones[k]();
-  } else if (kind === "cierre") {
-    // El cierre clásico no tiene secciones intercambiables: es una cuenta que
-    // se lee de arriba abajo. Solo respeta el cuerpo del nombre y el del
-    // resultado, y las mismas negritas.
-    poner("business_name", {
-      size: cuerpo("header"),
-      bold: encendida(fmt.boldBusinessName),
-      align: "center",
-    });
-    poner("title", { text: "CIERRE DE CAJA", bold: encendida(fmt.boldTitle), align: "center" });
-    poner("separator", { options: { style: "dashes" } });
-    poner("cash_box", { label: "Caja" });
-    poner("opening", { label: "Apertura" });
-    poner("closing", { label: "Cierre" });
-    poner("separator", { options: { style: "dashes" } });
-    poner("sales_by_method", { label: "VENTAS POR METODO", options: { showTotal: true } });
-    poner("separator", { options: { style: "dashes" } });
-    poner("movements", { visible: false });
-    poner("cash_count", { label: "", options: { showSigns: true } });
-    poner("separator", { options: { style: "dashes" } });
-    poner("result", {
-      size: cuerpo("total"),
-      bold: encendida(fmt.boldTotal),
-      align: "center",
-      options: { style: "difference" },
-    });
-    poner("separator", { options: { style: "dashes" } });
-    poner("orders_list", { options: { mode: "list" } });
-    poner("separator", { options: { style: "dashes" } });
-    poner("printed_at", { label: "Impreso", align: "center" });
-    poner("signature", { visible: false });
   } else {
     const preventa = kind === "precuenta";
     const secciones: Record<PrintSectionKey, () => void> = {
