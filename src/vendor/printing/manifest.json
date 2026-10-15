@@ -2,12 +2,12 @@
   "origen": "@mando/printing",
   "archivos": {
     "escpos/cash-close.ts": "f24635f7745a755a",
-    "escpos/electronic.ts": "262d79a971cad3c0",
+    "escpos/electronic.ts": "ee6cf94d89f20c55",
     "escpos/helpers.ts": "c144d89317773ddf",
     "escpos/kitchen.ts": "7eae757eeef285b6",
-    "escpos/qr.ts": "1e05000844cb8a45",
+    "escpos/qr.ts": "15621dfa2f70bf09",
     "escpos/receipt.ts": "b1f20da8a2ffa375",
-    "fiscal.ts": "5f51355a2bf79df4",
+    "fiscal.ts": "e34af17dee051705",
     "format.ts": "1439cdbfd7f11407",
     "index.ts": "2c81bb1ec7974444",
     "plantilla/catalogo.ts": "565dfb16b5d8bf6c",
@@ -20,10 +20,10 @@
     "plantilla/testing.ts": "2422416783256016",
     "plantilla/tipos.ts": "2690537f3601cb01",
     "preview/parse.ts": "b867e922c782f9de",
-    "preview/render-html.ts": "86a55352f2b60027",
+    "preview/render-html.ts": "e9a55b57a2934095",
     "preview/sample.ts": "57f4f52bcf5abc10",
     "receipt-printer-encoder.d.ts": "dec1aa7a0a4374eb",
     "types.ts": "f73fcb815f98d8ef"
   },
-  "commit": "533dde6cc"
+  "commit": "8012b25d6"
 }
