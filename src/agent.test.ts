@@ -248,7 +248,7 @@ describe('handshake con el backend', () => {
     expect(opciones.auth).toEqual({
       token: 'mpag_test',
       version,
-      capacidades: ['PREVENTA', 'CASH_CLOSE'],
+      capacidades: ['PREVENTA', 'CASH_CLOSE', 'ELECTRONICO'],
     })
   })
 

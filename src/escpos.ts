@@ -8,9 +8,11 @@ const ReceiptPrinterEncoder = require('@point-of-sale/receipt-printer-encoder')
 
 import {
   encodeCashCloseTicket as encodeCashCloseTicketShared,
+  encodeElectronicDocumentTicket as encodeElectronicDocumentTicketShared,
   encodeKitchenTicket as encodeKitchenTicketShared,
   encodeReceiptTicket as encodeReceiptTicketShared,
   type CashCloseData,
+  type DatosFiscales,
   type TicketOrder,
 } from './vendor/printing'
 
@@ -132,6 +134,40 @@ export function encodeCashCloseTicket(
     paperWidth,
     format: branding.receiptFormatConfig,
   })
+}
+
+// ---------------------------------------------------------------------------
+// Boleta y factura electronica (ELECTRONIC)
+// ---------------------------------------------------------------------------
+
+/**
+ * Boleta o factura electronica ya emitida.
+ *
+ * El pedido se traduce con el mismo adaptador del comprobante y los datos
+ * fiscales (serie, correlativo, cliente, importes) llegan ya armados desde la
+ * API. El dibujo es el del documento `electronico` del editor: la plantilla
+ * guardada en `receiptFormatConfig` o, si el negocio nunca la diseno, la de
+ * fabrica. Es el mismo codigo que usa el panel, asi que sale igual.
+ *
+ * Lanza si `fiscal` falta o no trae serie y correlativo: un papel que dice
+ * «BOLETA DE VENTA ELECTRONICA» sin numero es un comprobante falso, y el
+ * trabajo debe fallar a la vista de la API antes que imprimirlo.
+ */
+export function encodeElectronicTicket(
+  order: Record<string, unknown>,
+  fiscal: Record<string, unknown> | null | undefined,
+  paperWidth: PaperWidth,
+  branding: PrintBranding,
+): Uint8Array {
+  if (!fiscal || typeof fiscal !== 'object') {
+    throw new Error('El comprobante electronico llego sin datos fiscales (fiscal)')
+  }
+  return encodeElectronicDocumentTicketShared(
+    aTicketOrder(order),
+    fiscal as unknown as DatosFiscales,
+    branding,
+    { paperWidth, format: branding.receiptFormatConfig },
+  )
 }
 
 // ---------------------------------------------------------------------------

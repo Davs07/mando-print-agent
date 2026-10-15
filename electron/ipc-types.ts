@@ -9,11 +9,13 @@ export interface JobEvent {
   jobId: string
   orderId: string
   /** Puede llegar un tipo que esta version no conoce: se rechaza y se muestra tal cual. */
-  ticketType: 'RECEIPT' | 'KITCHEN' | 'CASH_CLOSE' | (string & {})
+  ticketType: 'RECEIPT' | 'KITCHEN' | 'CASH_CLOSE' | 'ELECTRONIC' | (string & {})
   /** Con `RECEIPT`: es una precuenta, no un comprobante. */
   preventa?: boolean
   /** Con `CASH_CLOSE`: `orderId` va vacio y la referencia es la caja. */
   cashBoxId?: string
+  /** Con `ELECTRONIC`: solo el tipo de documento (`"03"` boleta, `"01"` factura). */
+  fiscal?: { tipoDoc: string }
   timestamp: string
 }
 

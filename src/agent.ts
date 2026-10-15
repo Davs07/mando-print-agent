@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events'
 import { io, Socket } from 'socket.io-client'
-import { encodeReceiptTicket, encodeKitchenTicket, encodeCashCloseTicket } from './escpos'
+import { encodeReceiptTicket, encodeKitchenTicket, encodeCashCloseTicket, encodeElectronicTicket } from './escpos'
 import type { PrintAgentConfig, LogLevel } from './config'
 import type { Printer } from './printer'
 import pkg from '../package.json'
@@ -15,12 +15,12 @@ export const VERSION_AGENTE: string = pkg.version
 /**
  * Lo que este agente sabe imprimir ademas de comandas y comprobantes.
  *
- * POR QUE SE DECLARA: la API solo manda precuentas y cierres de caja a quien
- * lo diga. Un agente viejo que recibiera una precuenta la imprimiria como
+ * POR QUE SE DECLARA: la API solo manda precuentas, cierres de caja y boletas o
+ * facturas electronicas a quien lo diga. Un agente viejo que recibiera una precuenta la imprimiria como
  * comprobante, sin el aviso de que no es un comprobante de pago. Agregar una
  * capacidad aqui sin implementarla en `handlePrintJob` seria mentirle a la API.
  */
-export const CAPACIDADES_AGENTE = ['PREVENTA', 'CASH_CLOSE'] as const
+export const CAPACIDADES_AGENTE = ['PREVENTA', 'CASH_CLOSE', 'ELECTRONICO'] as const
 
 // ─── Tipos espejados del backend ──────────────────────────────────────────────
 
@@ -56,7 +56,7 @@ interface PrintJobPayload {
    * controla este agente, y un tipo que no conoce debe rechazarse, no caer en la
    * rama por defecto.
    */
-  ticketType: 'RECEIPT' | 'KITCHEN' | 'CASH_CLOSE' | (string & {})
+  ticketType: 'RECEIPT' | 'KITCHEN' | 'CASH_CLOSE' | 'ELECTRONIC' | (string & {})
   paperWidth: '58mm' | '80mm'
   /** `{}` en un `CASH_CLOSE`. */
   order: Record<string, unknown>
@@ -65,6 +65,11 @@ interface PrintJobPayload {
   /** Solo con `CASH_CLOSE`, con la forma de `CashCloseData`. */
   cashClose?: Record<string, unknown>
   cashBoxId?: string
+  /**
+   * Solo con `ELECTRONIC`: los datos de la boleta o factura emitida, con la
+   * forma de `DatosFiscales` (`order` trae el pedido, igual que en `RECEIPT`).
+   */
+  fiscal?: Record<string, unknown>
   branding: PrintBranding
   timestamp: string
 }
@@ -185,7 +190,7 @@ export class PrintAgent extends EventEmitter {
   // ─── Impresión ──────────────────────────────────────────────────────────────
 
   private async handlePrintJob(payload: PrintJobPayload): Promise<void> {
-    const { jobId, ticketType, paperWidth, order, branding, orderId, preventa, cashClose, cashBoxId } = payload
+    const { jobId, ticketType, paperWidth, order, branding, orderId, preventa, cashClose, cashBoxId, fiscal } = payload
     this.log(
       'info',
       `Job recibido: ${jobId} | tipo: ${ticketType}${preventa ? ' (precuenta)' : ''} | papel: ${paperWidth}`,
@@ -197,6 +202,11 @@ export class PrintAgent extends EventEmitter {
       timestamp: payload.timestamp,
       ...(preventa ? { preventa: true } : {}),
       ...(cashBoxId ? { cashBoxId } : {}),
+      // Solo el tipo de documento, para que la interfaz diga «Boleta» o «Factura»
+      // sin cargar con el comprobante entero (cliente, importes) hasta la ventana.
+      ...(ticketType === 'ELECTRONIC' && fiscal && typeof fiscal === 'object'
+        ? { fiscal: { tipoDoc: String(fiscal.tipoDoc ?? '') } }
+        : {}),
     })
 
     let success = false
@@ -218,6 +228,9 @@ export class PrintAgent extends EventEmitter {
             throw new Error('El cierre de caja llego sin datos (cashClose)')
           }
           bytes = encodeCashCloseTicket(cashClose, effectivePaperWidth, branding)
+          break
+        case 'ELECTRONIC':
+          bytes = encodeElectronicTicket(order, fiscal, effectivePaperWidth, branding)
           break
         default:
           // Nunca caer en la comanda: imprimir en cocina un documento que el

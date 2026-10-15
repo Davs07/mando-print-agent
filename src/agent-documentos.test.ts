@@ -209,6 +209,108 @@ describe('el agente imprime los documentos nuevos', () => {
     })
   })
 
+  describe('ELECTRONIC (boleta y factura electronica)', () => {
+    const boleta = {
+      tipoDoc: '03',
+      serie: 'B001',
+      correlativo: 15,
+      fechaEmision: '2026-10-08',
+      cliente: null,
+      opGravada: 16.95,
+      igv: 3.05,
+      total: 20,
+    }
+    const factura = {
+      tipoDoc: '01',
+      serie: 'F001',
+      correlativo: '123',
+      fechaEmision: '2026-10-08',
+      cliente: { tipoDoc: 'RUC', numDoc: '20601234567', nombre: 'INVERSIONES LA COSTA SAC', direccion: 'Av. Mar 456' },
+      opGravada: 16.95,
+      igv: 3.05,
+      total: 20,
+    }
+    const electronico = (fiscal: unknown, extra: Record<string, unknown> = {}) =>
+      trabajo({ ticketType: 'ELECTRONIC', fiscal, ...extra })
+
+    it('la boleta sale con su titulo, el numero a 8 digitos y un QR', async () => {
+      const r = await despachar(electronico(boleta))
+
+      expect(r.success).toBe(true)
+      const t = texto(impresos[0])
+      expect(t).toContain('BOLETA DE VENTA ELECTRONICA')
+      expect(t).toContain('B001-00000015')
+      expect(t).toContain('PUBLICO EN GENERAL')
+      expect(t).toContain('Ceviche mixto')
+      expect(parseEscPos(impresos[0]).some((l) => typeof l.qr === 'string' && l.qr.length > 0)).toBe(true)
+    })
+
+    it('la factura lleva el RUC y el nombre del cliente', async () => {
+      const r = await despachar(electronico(factura))
+
+      expect(r.success).toBe(true)
+      const t = texto(impresos[0])
+      expect(t).toContain('FACTURA ELECTRONICA')
+      expect(t).toContain('F001-00000123')
+      expect(t).toContain('20601234567')
+      expect(t).toContain('INVERSIONES LA COSTA SAC')
+      expect(t).not.toContain('PUBLICO EN GENERAL')
+    })
+
+    it('con la plantilla guardada en receiptFormatConfig, sale con esa', async () => {
+      const plantilla = plantillaPorDefecto('electronico')
+      plantilla.blocks = plantilla.blocks.map((b) =>
+        b.type === 'text' ? { ...b, visible: true, text: 'VUELVA PRONTO A LA COSTA' } : b,
+      )
+      // Como llega por websocket: una cadena JSON.
+      const receiptFormatConfig = JSON.stringify(formatoConPlantilla({}, 'electronico', plantilla))
+
+      await despachar(electronico(boleta, { branding: { ...branding, receiptFormatConfig } }))
+
+      expect(texto(impresos[0])).toContain('VUELVA PRONTO A LA COSTA')
+    })
+
+    it('el resultado lleva el tipo recibido', async () => {
+      const r = await despachar(electronico(boleta))
+
+      expect(r.ticketType).toBe('ELECTRONIC')
+      expect(r.orderId).toBe('o1')
+    })
+
+    it('sin fiscal no imprime nada y reporta el error', async () => {
+      const r = await despachar(electronico(undefined))
+
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('fiscal')
+      expect(r.ticketType).toBe('ELECTRONIC')
+      expect(printer.print).not.toHaveBeenCalled()
+    })
+
+    it('sin serie o sin correlativo no imprime nada y reporta el error', async () => {
+      for (const incompleto of [
+        { ...boleta, serie: '' },
+        { ...boleta, correlativo: '' },
+        { tipoDoc: '03', total: 20 },
+      ]) {
+        const r = await despachar(electronico(incompleto))
+
+        expect(r.success).toBe(false)
+        expect(r.error).toContain('serie y correlativo')
+      }
+      expect(printer.print).not.toHaveBeenCalled()
+    })
+
+    it('el evento del trabajo lleva el tipo de documento para la interfaz', async () => {
+      const eventos: any[] = []
+      const agente = new PrintAgent(config, printer)
+      agente.on('job', (e) => eventos.push(e))
+      agente.connect()
+      await despachar(electronico(factura))
+
+      expect(eventos.at(-1).fiscal).toEqual({ tipoDoc: '01' })
+    })
+  })
+
   describe('tipos desconocidos', () => {
     it('no imprime nada y reporta el error, en vez de caer en la comanda', async () => {
       const r = await despachar(trabajo({ ticketType: 'ETIQUETA_FUTURA' }))

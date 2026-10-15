@@ -24,6 +24,13 @@ function etiquetaDe(job: JobEntry): { texto: string; clase: string } {
       return { texto: 'Cocina', clase: 'bg-orange-900/60 text-orange-300' }
     case 'CASH_CLOSE':
       return { texto: 'Cierre de caja', clase: 'bg-emerald-900/60 text-emerald-300' }
+    case 'ELECTRONIC':
+      return {
+        // «03» boleta, «01» factura (catalogo 01 de SUNAT).
+        texto:
+          job.fiscal?.tipoDoc === '01' ? 'Factura' : job.fiscal?.tipoDoc === '03' ? 'Boleta' : 'Comprobante electrónico',
+        clase: 'bg-violet-900/60 text-violet-300',
+      }
     default:
       return { texto: String(job.ticketType), clase: 'bg-gray-800 text-gray-400' }
   }
