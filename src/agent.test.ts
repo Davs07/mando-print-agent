@@ -154,9 +154,7 @@ describe('PrintAgent', () => {
     trigger('print:job', job)
 
     // Esperar la promesa async del handler
-    await vi.waitFor(() => {
-      return emittedEvents.some((e) => e.event === 'print:result')
-    })
+    await vi.waitFor(() => expect(emittedEvents.some((e) => e.event === 'print:result')).toBe(true))
 
     expect(printer.print).toHaveBeenCalledTimes(1)
     const result = emittedEvents.find((e) => e.event === 'print:result')?.data as any
@@ -170,7 +168,7 @@ describe('PrintAgent', () => {
     const job = makePrintJob({ ticketType: 'KITCHEN' })
     trigger('print:job', job)
 
-    await vi.waitFor(() => emittedEvents.some((e) => e.event === 'print:result'))
+    await vi.waitFor(() => expect(emittedEvents.some((e) => e.event === 'print:result')).toBe(true))
 
     const result = emittedEvents.find((e) => e.event === 'print:result')?.data as any
     expect(result.success).toBe(true)
@@ -186,7 +184,7 @@ describe('PrintAgent', () => {
     const job = makePrintJob()
     trigger('print:job', job)
 
-    await vi.waitFor(() => emittedEvents.some((e) => e.event === 'print:result'))
+    await vi.waitFor(() => expect(emittedEvents.some((e) => e.event === 'print:result')).toBe(true))
 
     const result = emittedEvents.find((e) => e.event === 'print:result')?.data as any
     expect(result.success).toBe(false)
@@ -197,7 +195,7 @@ describe('PrintAgent', () => {
     trigger('connect')
     trigger('print:job', makePrintJob({ orderId: 'order-XYZ', ticketType: 'RECEIPT' }))
 
-    await vi.waitFor(() => emittedEvents.some((e) => e.event === 'print:result'))
+    await vi.waitFor(() => expect(emittedEvents.some((e) => e.event === 'print:result')).toBe(true))
 
     const result = emittedEvents.find((e) => e.event === 'print:result')?.data as any
     expect(result.orderId).toBe('order-XYZ')
@@ -208,6 +206,126 @@ describe('PrintAgent', () => {
     trigger('connect')
     agent.disconnect()
     expect(mockSocket.disconnect).toHaveBeenCalled()
+  })
+})
+
+// ─── Cola de impresión ────────────────────────────────────────────────────────
+
+/**
+ * La térmica es un recurso de a uno. Al cobrar, el panel manda la comanda y el
+ * comprobante casi a la vez; antes cada trabajo imprimía por su cuenta, así que
+ * en una impresora de red de una sola conexión el segundo podía chocar con el
+ * primero, y con PowerShell por ticket terminaban en el orden en que cada
+ * proceso acababa de arrancar, no en el que llegaron.
+ */
+describe('cola de impresión', () => {
+  /** Un `print` que solo termina cuando el test lo decide, anotando cuándo empieza y acaba. */
+  function impresoraControlada() {
+    const bitacora: string[] = []
+    const terminar: Array<() => void> = []
+    const fallar: Array<(e: Error) => void> = []
+    const printer: Printer = {
+      print: vi.fn(
+        () =>
+          new Promise<void>((resolve, reject) => {
+            const n = terminar.length + 1
+            bitacora.push(`empieza ${n}`)
+            terminar.push(() => {
+              bitacora.push(`termina ${n}`)
+              resolve()
+            })
+            fallar.push((e) => {
+              bitacora.push(`falla ${n}`)
+              reject(e)
+            })
+          }),
+      ),
+    }
+    return { printer, bitacora, terminar, fallar }
+  }
+
+  let agent: PrintAgent
+  beforeEach(() => {
+    vi.clearAllMocks()
+    emittedEvents.length = 0
+    Object.keys(socketEventHandlers).forEach((k) => delete socketEventHandlers[k])
+  })
+
+  const resultados = () =>
+    emittedEvents.filter((e) => e.event === 'print:result').map((e) => e.data as any)
+  const esperar = () => new Promise((r) => setTimeout(r, 15))
+
+  it('dos trabajos a la vez se imprimen uno tras otro, nunca solapados, en orden de llegada', async () => {
+    const { printer, bitacora, terminar } = impresoraControlada()
+    agent = new PrintAgent(baseConfig, printer)
+    agent.connect()
+    trigger('connect')
+
+    trigger('print:job', makePrintJob({ jobId: 'comanda', ticketType: 'KITCHEN' }))
+    trigger('print:job', makePrintJob({ jobId: 'comprobante', ticketType: 'RECEIPT' }))
+    await esperar()
+
+    // El segundo NO empieza mientras el primero sigue en la impresora.
+    expect(bitacora).toEqual(['empieza 1'])
+
+    terminar[0]!()
+    await vi.waitFor(() => expect(bitacora).toContain('empieza 2'))
+    terminar[1]!()
+    await vi.waitFor(() => expect(resultados()).toHaveLength(2))
+
+    expect(bitacora).toEqual(['empieza 1', 'termina 1', 'empieza 2', 'termina 2'])
+    expect(resultados().map((r) => r.jobId)).toEqual(['comanda', 'comprobante'])
+  })
+
+  it('el resultado de cada trabajo sale cuando SU ticket se imprimió, sin esperar a los siguientes', async () => {
+    const { printer, terminar } = impresoraControlada()
+    agent = new PrintAgent(baseConfig, printer)
+    agent.connect()
+    trigger('connect')
+
+    trigger('print:job', makePrintJob({ jobId: 'a' }))
+    trigger('print:job', makePrintJob({ jobId: 'b' }))
+    await esperar()
+    terminar[0]!()
+
+    await vi.waitFor(() => expect(resultados()).toHaveLength(1))
+    expect(resultados()[0]).toMatchObject({ jobId: 'a', success: true })
+  })
+
+  it('si el primer ticket falla, el siguiente se imprime igual y cada uno reporta lo suyo', async () => {
+    const { printer, bitacora, terminar, fallar } = impresoraControlada()
+    agent = new PrintAgent(baseConfig, printer)
+    agent.connect()
+    trigger('connect')
+
+    trigger('print:job', makePrintJob({ jobId: 'a' }))
+    trigger('print:job', makePrintJob({ jobId: 'b' }))
+    await esperar()
+    fallar[0]!(new Error('PAPEL AGOTADO'))
+    await vi.waitFor(() => expect(bitacora).toContain('empieza 2'))
+    terminar[1]!()
+    await vi.waitFor(() => expect(resultados()).toHaveLength(2))
+
+    const [a, b] = resultados()
+    expect(a).toMatchObject({ jobId: 'a', success: false })
+    expect(a.error).toContain('PAPEL AGOTADO')
+    expect(b).toMatchObject({ jobId: 'b', success: true })
+  })
+
+  it('un ticket que no se entiende falla sin ocupar la impresora ni frenar la cola', async () => {
+    const { printer, bitacora, terminar } = impresoraControlada()
+    agent = new PrintAgent(baseConfig, printer)
+    agent.connect()
+    trigger('connect')
+
+    trigger('print:job', makePrintJob({ jobId: 'raro', ticketType: 'NO_EXISTE' }))
+    trigger('print:job', makePrintJob({ jobId: 'bueno' }))
+    await vi.waitFor(() => expect(bitacora).toContain('empieza 1'))
+    terminar[0]!()
+    await vi.waitFor(() => expect(resultados()).toHaveLength(2))
+
+    expect(resultados().find((r) => r.jobId === 'raro')).toMatchObject({ success: false })
+    expect(printer.print).toHaveBeenCalledTimes(1)
   })
 })
 

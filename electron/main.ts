@@ -136,6 +136,22 @@ function createWindow(): void {
 
 // ─── Ciclo de vida del agente ─────────────────────────────────────────────────
 
+/**
+ * La impresora del agente en marcha. Se guarda para poder CERRARLA al reiniciar
+ * o salir: la de Windows mantiene un PowerShell residente y la serie un puerto
+ * abierto, y sin cerrarlos cada reinicio dejaba uno huérfano.
+ */
+let impresoraActual: Awaited<ReturnType<typeof createPrinter>> | null = null
+
+function cerrarImpresora(): void {
+  try {
+    impresoraActual?.close?.()
+  } catch {
+    // cerrar no debe impedir reiniciar ni salir
+  }
+  impresoraActual = null
+}
+
 async function startAgent(): Promise<void> {
   if (agent) {
     try {
@@ -145,6 +161,7 @@ async function startAgent(): Promise<void> {
     }
     agent = null
   }
+  cerrarImpresora()
 
   const envPath = getEnvPath()
   dotenv.config({ path: envPath, override: true })
@@ -152,6 +169,7 @@ async function startAgent(): Promise<void> {
   try {
     const config = loadConfig(envPath)
     const printer = await createPrinter(config)
+    impresoraActual = printer
     agent = new PrintAgent(config, printer)
 
     agent.on('status', (event: AgentStatusEvent) => {
@@ -244,7 +262,13 @@ ipcMain.handle('printer:test', async (): Promise<{ ok: boolean; error?: string }
   try {
     const config = loadConfig(getEnvPath())
     const printer = await createPrinter(config)
-    await printer.print(encodeTestTicket(config.paperWidth ?? '80mm'))
+    try {
+      await printer.print(encodeTestTicket(config.paperWidth ?? '80mm'))
+    } finally {
+      // Esta impresora es solo de la prueba: si no se cierra, cada clic en
+      // «Imprimir prueba» dejaría un PowerShell residente más.
+      printer.close?.()
+    }
     return { ok: true }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
@@ -389,4 +413,5 @@ app.on('before-quit', () => {
   if (agent) {
     try { agent.disconnect() } catch { /* ignore */ }
   }
+  cerrarImpresora()
 })

@@ -4,9 +4,23 @@ import * as os from 'os'
 import * as path from 'path'
 import { execFile } from 'child_process'
 import type { PrintAgentConfig } from './config'
+import {
+  CODIGO_CSHARP,
+  ErrorDeImpresora,
+  HostDePowerShell,
+  HostNoDisponible,
+} from './windows-host'
 
 export interface Printer {
   print(bytes: Uint8Array): Promise<void>
+  /**
+   * Paga por adelantado lo que tarda el primer ticket (arrancar PowerShell,
+   * abrir el puerto…). Nunca lanza: si no se puede, el primer ticket lo intenta
+   * por su cuenta y falla con su propio error.
+   */
+  warmUp?(): Promise<void>
+  /** Libera lo que la impresora tenga abierto (procesos, puertos). Idempotente. */
+  close?(): void
 }
 
 // ---------------------------------------------------------------------------
@@ -79,6 +93,15 @@ export class SerialPrinter implements Printer {
     })
   }
 
+  /** Sin esto, reiniciar el agente dejaba el puerto abierto y el reinicio fallaba con «acceso denegado». */
+  close(): void {
+    try {
+      if (this.sp?.isOpen) this.sp.close()
+    } catch {
+      // ya estaba cerrado
+    }
+  }
+
   print(bytes: Uint8Array): Promise<void> {
     return new Promise((resolve, reject) => {
       this.sp.write(Buffer.from(bytes), (err: Error | null) => {
@@ -137,70 +160,7 @@ $ErrorActionPreference = 'Stop'
 # print:result, asi que tiene que ser legible.
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-
-public class MandoRawPrinter {
-  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-  public class DOCINFOW {
-    [MarshalAs(UnmanagedType.LPWStr)] public string pDocName;
-    [MarshalAs(UnmanagedType.LPWStr)] public string pOutputFile;
-    [MarshalAs(UnmanagedType.LPWStr)] public string pDataType;
-  }
-
-  [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)]
-  public static extern bool OpenPrinter(string src, out IntPtr hPrinter, IntPtr pd);
-  [DllImport("winspool.drv", SetLastError = true)]
-  public static extern bool ClosePrinter(IntPtr hPrinter);
-  [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)]
-  public static extern bool StartDocPrinter(IntPtr hPrinter, int level, [In, MarshalAs(UnmanagedType.LPStruct)] DOCINFOW di);
-  [DllImport("winspool.drv", SetLastError = true)]
-  public static extern bool EndDocPrinter(IntPtr hPrinter);
-  [DllImport("winspool.drv", SetLastError = true)]
-  public static extern bool StartPagePrinter(IntPtr hPrinter);
-  [DllImport("winspool.drv", SetLastError = true)]
-  public static extern bool EndPagePrinter(IntPtr hPrinter);
-  [DllImport("winspool.drv", SetLastError = true)]
-  public static extern bool WritePrinter(IntPtr hPrinter, IntPtr pBytes, int dwCount, out int dwWritten);
-
-  public static void SendBytes(string printerName, byte[] bytes) {
-    IntPtr hPrinter;
-    if (!OpenPrinter(printerName, out hPrinter, IntPtr.Zero)) {
-      int codigo = Marshal.GetLastWin32Error();
-      // 1801 = ERROR_INVALID_PRINTER_NAME. Es con diferencia el fallo mas
-      // frecuente: el nombre tiene que coincidir EXACTAMENTE con el instalado.
-      string pista = codigo == 1801
-        ? " - ese nombre no coincide con ninguna impresora instalada"
-        : "";
-      throw new Exception("No se pudo abrir la impresora '" + printerName + "' (codigo " + codigo + ")" + pista);
-    }
-    try {
-      DOCINFOW di = new DOCINFOW();
-      di.pDocName = "Mando Ticket";
-      di.pDataType = "RAW";
-      if (!StartDocPrinter(hPrinter, 1, di))
-        throw new Exception("StartDocPrinter fallo (codigo " + Marshal.GetLastWin32Error() + ")");
-      try {
-        if (!StartPagePrinter(hPrinter))
-          throw new Exception("StartPagePrinter fallo (codigo " + Marshal.GetLastWin32Error() + ")");
-        IntPtr buffer = Marshal.AllocCoTaskMem(bytes.Length);
-        try {
-          Marshal.Copy(bytes, 0, buffer, bytes.Length);
-          int escritos;
-          if (!WritePrinter(hPrinter, buffer, bytes.Length, out escritos))
-            throw new Exception("WritePrinter fallo (codigo " + Marshal.GetLastWin32Error() + ")");
-        } finally {
-          Marshal.FreeCoTaskMem(buffer);
-        }
-        EndPagePrinter(hPrinter);
-      } finally {
-        EndDocPrinter(hPrinter);
-      }
-    } finally {
-      ClosePrinter(hPrinter);
-    }
-  }
-}
+${CODIGO_CSHARP}
 '@
 try {
   [MandoRawPrinter]::SendBytes($PrinterName, [System.IO.File]::ReadAllBytes($FilePath))
@@ -213,13 +173,31 @@ try {
 }
 `
 
+export interface OpcionesWindowsPrinter {
+  /**
+   * `true` (por defecto): un PowerShell residente que compila una vez y recibe
+   * los tickets por stdin. `false`: el camino de siempre, un PowerShell por
+   * ticket — el respaldo cuando el residente no se puede usar.
+   */
+  residente?: boolean
+  /** Para probar sin PowerShell. */
+  host?: HostDePowerShell
+}
+
 export class WindowsPrinter implements Printer {
   private scriptPath: string | null = null
+  private host: HostDePowerShell | null
+  /** Pasa a `false` si el residente no arranca: desde ahí todo va por el camino de siempre. */
+  private usarHost: boolean
 
   constructor(
     private readonly printerName: string,
     private readonly timeoutMs = 20_000,
-  ) {}
+    opciones: OpcionesWindowsPrinter = {},
+  ) {
+    this.usarHost = opciones.residente !== false
+    this.host = this.usarHost ? (opciones.host ?? new HostDePowerShell()) : null
+  }
 
   /** El script se escribe una vez y se reutiliza en cada ticket. */
   private asegurarScript(): string {
@@ -231,22 +209,73 @@ export class WindowsPrinter implements Printer {
     return ruta
   }
 
-  print(bytes: Uint8Array): Promise<void> {
+  /**
+   * Arranca PowerShell y abre la impresora ahora, no con el primer ticket. Medido,
+   * ese arranque cuesta de 1 a 4 s en frío y se lo comía el primer cliente.
+   */
+  async warmUp(): Promise<void> {
+    if (process.platform !== 'win32' || !this.usarHost || !this.host) return
+    try {
+      await this.host.probar(this.printerName, this.timeoutMs)
+    } catch (err) {
+      // Un nombre de impresora mal escrito también llega aquí: no es motivo para
+      // dejar de usar el residente (el primer ticket dirá el error de verdad).
+      if (err instanceof HostNoDisponible) this.usarHost = false
+    }
+  }
+
+  close(): void {
+    this.host?.cerrar()
+  }
+
+  async print(bytes: Uint8Array): Promise<void> {
     if (process.platform !== 'win32') {
-      return Promise.reject(
-        new Error('El modo de impresora "windows" solo funciona en Windows.'),
-      )
+      throw new Error('El modo de impresora "windows" solo funciona en Windows.')
     }
 
-    const script = this.asegurarScript()
-    // Los bytes van por archivo y no por stdin: PowerShell reinterpreta la
+    // Los bytes van por archivo y no por stdin: PowerShell reinterpretaría la
     // codificación de stdin y corrompería el binario de ESC/POS.
     const datos = path.join(
       os.tmpdir(),
-      `mando-ticket-${process.pid}-${Date.now()}.bin`,
+      `mando-ticket-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.bin`,
     )
     fs.writeFileSync(datos, Buffer.from(bytes))
 
+    try {
+      if (this.usarHost && this.host) {
+        try {
+          await this.host.imprimir(this.printerName, datos, this.timeoutMs)
+          return
+        } catch (err) {
+          if (err instanceof HostNoDisponible) {
+            // El trabajo NO llegó a enviarse: es seguro probar por el camino de
+            // siempre, y no se vuelve a intentar el residente en esta sesión
+            // (cada intento fallido costaría su tiempo de espera).
+            this.usarHost = false
+          } else if (err instanceof ErrorDeImpresora) {
+            throw new Error(`No se pudo imprimir en "${this.printerName}": ${err.message}`)
+          } else {
+            // El host se colgó o murió con el trabajo ya enviado: no se
+            // reintenta por otro camino, podría duplicarse el ticket.
+            throw new Error(
+              `No se pudo imprimir en "${this.printerName}": ${err instanceof Error ? err.message : String(err)}`,
+            )
+          }
+        }
+      }
+      await this.imprimirUnaVez(datos)
+    } finally {
+      try {
+        fs.unlinkSync(datos)
+      } catch {
+        // Un temporal huérfano no debe tumbar una impresión correcta.
+      }
+    }
+  }
+
+  /** El camino de siempre: un `powershell.exe` por ticket. Lento, pero no depende de un proceso vivo. */
+  private imprimirUnaVez(datos: string): Promise<void> {
+    const script = this.asegurarScript()
     return new Promise<void>((resolve, reject) => {
       execFile(
         'powershell.exe',
@@ -262,12 +291,6 @@ export class WindowsPrinter implements Printer {
         ],
         { timeout: this.timeoutMs, windowsHide: true },
         (err, _stdout, stderr) => {
-          try {
-            fs.unlinkSync(datos)
-          } catch {
-            // Un temporal huérfano no debe tumbar una impresión correcta.
-          }
-
           if (err) {
             const detalle = String(stderr || '').trim() || err.message
             reject(new Error(`No se pudo imprimir en "${this.printerName}": ${detalle}`))
@@ -310,7 +333,11 @@ export async function createPrinter(config: PrintAgentConfig): Promise<Printer> 
             '(el nombre exacto con el que aparece en Dispositivos e impresoras)',
         )
       }
-      return new WindowsPrinter(config.printerName)
+      const impresora = new WindowsPrinter(config.printerName)
+      // Sin esperar: la app no debe tardar en abrir porque PowerShell compila. Si
+      // algo sale mal, el primer ticket lo vuelve a intentar y dice el error.
+      void impresora.warmUp()
+      return impresora
     }
     case 'file': {
       if (!config.filePath) {

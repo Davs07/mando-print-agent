@@ -86,6 +86,32 @@ SERIAL_BAUD_RATE=9600
 PAPER_WIDTH=58mm
 ```
 
+### Impresora USB instalada como impresora de Windows
+La mayoría de las térmicas USB baratas no aparecen como puerto COM: se instalan con su driver como una impresora normal. Para esas:
+```env
+PRINTER_TYPE=windows
+PRINTER_NAME=POS-80C          # el nombre EXACTO de «Dispositivos e impresoras»
+PAPER_WIDTH=80mm
+```
+
+El agente manda los bytes crudos (ESC/POS) al spooler de Windows con el tipo de datos RAW.
+Para eso mantiene **un PowerShell residente** (oculto) que compila el código de `winspool`
+una sola vez al abrir la app y recibe los tickets por stdin. Antes lanzaba un PowerShell
+nuevo por ticket: medido, entre 1,2 y 2,5 s de mediana por ticket (hasta 5,5 s el primero)
+solo en arrancar y compilar; ahora son ~7 ms. El proceso se cierra solo al reiniciar el
+agente o salir de la app, y si no se puede usar el residente (directiva de PowerShell,
+antivirus) el agente vuelve al modo de un PowerShell por ticket sin perder tickets.
+
+Los tickets se imprimen **de a uno y en el orden en que llegan** (la comanda y el
+comprobante de un cobro ya no compiten por la impresora), y el log dice cuánto tardó cada
+parte: `impreso correctamente (codificar 4 ms · imprimir 9 ms)`.
+
+Para medir en el local, con la impresora instalada (imprime de verdad, un ticket por medición):
+```bash
+npx ts-node --transpile-only scripts/medir-impresion.ts "POS-80C"
+```
+Sin nombre usa una impresora inexistente y mide solo el sobrecosto fijo, sin gastar papel.
+
 ### Modo archivo (desarrollo/pruebas)
 ```env
 MANDO_AGENT_TOKEN=mpa_xxxxxxxxxxxx.yyyyyyyyyyyyyyyyyyy
@@ -117,7 +143,8 @@ npm run dist     # Generar instaladores Electron en release/
 src/
   config.ts    Carga y valida variables de entorno
   escpos.ts    Codificación ESC/POS de tickets (puerto del frontend)
-  printer.ts   Transports: NetworkPrinter, SerialPrinter, FilePrinter
+  printer.ts   Transports: NetworkPrinter, SerialPrinter, WindowsPrinter, FilePrinter
+  windows-host.ts  PowerShell residente de WindowsPrinter (protocolo por stdin)
   agent.ts     Cliente WebSocket + gestión de trabajos de impresión
   index.ts     Punto de entrada, banner, arranque y apagado limpio
 ```

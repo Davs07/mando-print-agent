@@ -89,6 +89,13 @@ export class PrintAgent extends EventEmitter {
   private socket: Socket | null = null
   private heartbeatTimer: NodeJS.Timeout | null = null
   private readonly logLevelIndex: number
+  /**
+   * Cola de la impresora: la térmica es un recurso de a uno. Al cobrar, el panel
+   * manda la comanda y el comprobante casi a la vez; sin cola cada trabajo
+   * imprimía por su cuenta, y en una impresora de red de una sola conexión el
+   * segundo podía chocar con el primero.
+   */
+  private cola: Promise<unknown> = Promise.resolve()
 
   private static readonly LOG_LEVELS: LogLevel[] = ['debug', 'info', 'warn', 'error']
 
@@ -211,6 +218,8 @@ export class PrintAgent extends EventEmitter {
 
     let success = false
     let error: string | undefined
+    const inicio = Date.now()
+    let trasCodificar = inicio
 
     try {
       const effectivePaperWidth = paperWidth ?? this.config.paperWidth
@@ -238,9 +247,15 @@ export class PrintAgent extends EventEmitter {
           throw new Error(`Tipo de ticket desconocido: ${String(ticketType)}`)
       }
 
-      await this.printer.print(bytes)
+      trasCodificar = Date.now()
+      await this.imprimirEnOrden(bytes)
       success = true
-      this.log('info', `Job ${jobId} impreso correctamente`)
+      // Los dos tiempos por separado: cuando "tarda", lo primero que hay que saber
+      // es si fue el agente (codificar), la espera por otro ticket o la impresora.
+      this.log(
+        'info',
+        `Job ${jobId} impreso correctamente (codificar ${trasCodificar - inicio} ms · imprimir ${Date.now() - trasCodificar} ms)`,
+      )
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
       this.log('error', `Job ${jobId} falló: ${error}`)
@@ -257,6 +272,17 @@ export class PrintAgent extends EventEmitter {
 
     this.emit('result', { jobId, success, ...(error ? { error } : {}) })
     this.socket?.emit('print:result', result)
+  }
+
+  /**
+   * Imprime cuando le toca. El orden es el de llegada, un ticket que falla no
+   * frena a los siguientes, y cada trabajo recibe SU resultado en cuanto SU
+   * ticket sale (no espera a los que vienen detrás).
+   */
+  private imprimirEnOrden(bytes: Uint8Array): Promise<void> {
+    const turno = this.cola.then(() => this.printer.print(bytes))
+    this.cola = turno.catch(() => undefined)
+    return turno
   }
 
   // ─── Logger ─────────────────────────────────────────────────────────────────

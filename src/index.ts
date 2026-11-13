@@ -58,6 +58,7 @@ async function main(): Promise<void> {
   const shutdown = (signal: string) => {
     console.log(`\n[INFO ] Señal ${signal} recibida — apagando...`)
     agent.disconnect()
+    printer.close?.()
     process.exit(0)
   }
 
